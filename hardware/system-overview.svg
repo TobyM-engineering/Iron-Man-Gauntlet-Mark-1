@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 790" width="1200" height="790" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1d2733"/>
+    </marker>
+    <style>
+      .t  { font-size: 14px; font-weight: 700; fill: #1d2733; }
+      .s  { font-size: 12px; fill: #4a5866; }
+      .h  { font-size: 15px; font-weight: 800; letter-spacing: 1.5px; }
+      .card { fill: #ffffff; stroke: #b9c4cf; stroke-width: 1.2; }
+      .line { stroke: #1d2733; stroke-width: 2; fill: none; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="790" rx="18" fill="#ffffff"/>
+  <text x="30" y="44" font-size="23" font-weight="800" fill="#1d2733">Iron Man Gauntlet · Mark 1 — system overview</text>
+  <text x="30" y="68" font-size="14" fill="#4a5866">One ESP32 reads the hand, moves the armour, runs the lights and flies the drone. No transmitter: the arm is the radio.</text>
+
+  <!-- HAND -->
+  <rect x="30" y="90" width="320" height="500" rx="14" fill="#fff4f3" stroke="#c62828" stroke-width="2"/>
+  <text x="48" y="118" class="h" fill="#c62828">HAND</text>
+  <text x="110" y="118" class="s">glove + hand plate</text>
+  <g>
+    <rect x="48" y="132" width="284" height="44" rx="8" class="card"/><text x="60" y="151" class="t">5 flex sensors</text><text x="60" y="168" class="s">one per finger: throttle + every gesture</text>
+    <rect x="48" y="182" width="284" height="44" rx="8" class="card"/><text x="60" y="201" class="t">BNO085 orientation sensor</text><text x="60" y="218" class="s">the hand's angle in space</text>
+    <rect x="48" y="232" width="284" height="44" rx="8" class="card"/><text x="60" y="251" class="t">ADS1115 ADC</text><text x="60" y="268" class="s">reads the four finger sensors</text>
+    <rect x="48" y="282" width="284" height="44" rx="8" class="card"/><text x="60" y="301" class="t">LiDAR + red laser</text><text x="60" y="318" class="s">under the hand plate, pointing forward</text>
+    <rect x="48" y="332" width="284" height="44" rx="8" class="card"/><text x="60" y="351" class="t">Thermal camera (MLX90640)</text><text x="60" y="368" class="s">seen when the hand plate lifts</text>
+    <rect x="48" y="382" width="284" height="44" rx="8" class="card"/><text x="60" y="401" class="t">Haptic driver + motor</text><text x="60" y="418" class="s">one buzz = done, two = refused</text>
+    <rect x="48" y="432" width="284" height="44" rx="8" class="card"/><text x="60" y="451" class="t">Palm repulsor</text><text x="60" y="468" class="s">19-LED ring + 5 high-power palm LEDs</text>
+    <rect x="48" y="482" width="284" height="44" rx="8" class="card"/><text x="60" y="501" class="t">Finger LEDs</text><text x="60" y="518" class="s">index + middle fingertips</text>
+    <rect x="48" y="532" width="284" height="44" rx="8" class="card"/><text x="60" y="551" class="t">Hand plate</text><text x="60" y="568" class="s">two servos moving as one mirrored pair</text>
+  </g>
+
+  <!-- FOREARM -->
+  <rect x="400" y="90" width="440" height="500" rx="14" fill="#f3f6fa" stroke="#34495e" stroke-width="2"/>
+  <text x="418" y="118" class="h" fill="#34495e">FOREARM</text>
+  <g>
+    <rect x="420" y="134" width="190" height="56" rx="8" class="card"/><text x="432" y="157" class="t">Forearm BNO085</text><text x="432" y="176" class="s">arm angle, subtracted out</text>
+    <rect x="630" y="134" width="190" height="56" rx="8" class="card"/><text x="642" y="157" class="t">PCA9685 PWM driver</text><text x="642" y="176" class="s">servos, lasers, LED groups</text>
+    <rect x="420" y="200" width="190" height="56" rx="8" class="card"/><text x="432" y="223" class="t">INA219 current</text><text x="432" y="242" class="s">a stalled servo lets go</text>
+    <rect x="630" y="200" width="190" height="56" rx="8" class="card"/><text x="642" y="223" class="t">Mode switch</text><text x="642" y="242" class="s">SAFE · SHOW · FULL</text>
+  </g>
+  <rect x="470" y="270" width="300" height="110" rx="12" fill="#1d2733"/>
+  <text x="620" y="302" text-anchor="middle" font-size="19" font-weight="800" fill="#ffffff">ESP32 WROOM-32</text>
+  <text x="620" y="326" text-anchor="middle" font-size="13" fill="#d7e0ea">reads the hand · flies the drone</text>
+  <text x="620" y="346" text-anchor="middle" font-size="13" fill="#d7e0ea">moves the plates · runs the lights</text>
+  <text x="620" y="366" text-anchor="middle" font-size="13" fill="#d7e0ea">battery rules · self-test · WiFi</text>
+  <g>
+    <rect x="420" y="400" width="190" height="56" rx="8" class="card"/><text x="432" y="423" class="t">Armour plates 1–3</text><text x="432" y="442" class="s">4 servos, eased cascade</text>
+    <rect x="630" y="400" width="190" height="56" rx="8" class="card"/><text x="642" y="423" class="t">Round touch screen</text><text x="642" y="442" class="s">ESP32-S3, + small OLED</text>
+    <rect x="420" y="466" width="190" height="56" rx="8" class="card"/><text x="432" y="489" class="t">Forearm LED strip</text><text x="432" y="508" class="s">WS2812, capped at 30 %</text>
+    <rect x="630" y="466" width="190" height="56" rx="8" class="card"/><text x="642" y="489" class="t">Buzzer + green laser</text><text x="642" y="508" class="s">laser fires out of plate 1</text>
+  </g>
+  <rect x="420" y="532" width="400" height="44" rx="8" fill="#fff7dd" stroke="#e0a800" stroke-width="1.6"/>
+  <text x="432" y="551" class="t">ELRS Nano TX module</text><text x="432" y="568" class="s">CRSF over one wire from the ESP32 — the arm is the radio</text>
+  <path d="M620,380 L620,530" class="line" stroke-dasharray="5 4" marker-end="url(#ah)"/>
+
+  <!-- wrist link -->
+  <path d="M352,325 L466,325" class="line" marker-end="url(#ah)" marker-start="url(#ah)"/>
+  <text x="410" y="314" text-anchor="middle" font-size="12" font-weight="700" fill="#1d2733">wrist</text>
+  <rect x="353" y="333" width="114" height="15" fill="#ffffff"/>
+  <text x="410" y="344" text-anchor="middle" font-size="11" fill="#4a5866">I²C bus 2 + signals</text>
+
+  <!-- OFF THE ARM -->
+  <rect x="870" y="90" width="300" height="500" rx="14" fill="#ffffff" stroke="#8a96a3" stroke-width="1.6" stroke-dasharray="6 5"/>
+  <text x="888" y="118" class="h" fill="#5d6b78">OFF THE ARM</text>
+  <rect x="885" y="134" width="270" height="150" rx="10" fill="#eef6ff" stroke="#3b78c2" stroke-width="1.6"/>
+  <text x="900" y="160" class="t">Any browser, over WiFi</text>
+  <text x="900" y="186" class="s">• 3D hand simulator, live</text>
+  <text x="900" y="206" class="s">• telemetry page: every sensor</text>
+  <text x="900" y="226" class="s">• tuning, calibration, console</text>
+  <text x="900" y="246" class="s">• firmware updates over the air</text>
+  <text x="900" y="270" font-size="11" fill="#5d6b78">served by the arm itself</text>
+  <path d="M770,300 L852,300 L852,209 L881,209" class="line" marker-end="url(#ah)"/>
+  <text x="811" y="293" text-anchor="middle" font-size="11" fill="#4a5866">WiFi</text>
+
+  <rect x="885" y="400" width="270" height="176" rx="10" fill="#fff7dd" stroke="#e0a800" stroke-width="1.6"/>
+  <text x="900" y="426" class="t">BetaFPV Air65 whoop</text>
+  <text x="900" y="448" class="s">Betaflight, angle mode, stock tune</text>
+  <text x="900" y="476" class="s">→ throttle, roll, pitch, yaw, arm</text>
+  <text x="914" y="494" class="s">50 times a second</text>
+  <text x="900" y="518" class="s">← link quality, battery, attitude,</text>
+  <text x="914" y="536" class="s">flight mode, arming flags</text>
+  <text x="900" y="562" font-size="11" fill="#5d6b78">ExpressLRS 2.4 GHz, 100 mW cap</text>
+  <path d="M822,554 L881,554" class="line" marker-end="url(#ah)" marker-start="url(#ah)"/>
+
+  <!-- POWER -->
+  <rect x="30" y="610" width="1140" height="160" rx="14" fill="#fffbec" stroke="#e0a800" stroke-width="2"/>
+  <text x="48" y="638" class="h" fill="#9a7400">POWER</text>
+  <rect x="48" y="652" width="170" height="60" rx="8" class="card"/><text x="60" y="676" class="t">2S LiHV pack</text><text x="60" y="696" class="s">1100 mAh 60C, 8.7 V full</text>
+  <text x="48" y="732" class="s">watched on GPIO 35:</text>
+  <text x="48" y="748" class="s">no arming under 7.5 V,</text>
+  <text x="48" y="764" class="s">shutdown at 6.6 V</text>
+  <path d="M220,682 L246,682" class="line" marker-end="url(#ah)"/>
+  <rect x="250" y="652" width="110" height="60" rx="8" class="card"/><text x="262" y="676" class="t">10 A fuse</text><text x="262" y="696" class="s">fast-blow</text>
+  <path d="M362,682 L388,682" class="line" marker-end="url(#ah)"/>
+  <rect x="392" y="652" width="170" height="60" rx="8" class="card"/><text x="404" y="676" class="t">Master switch</text><text x="404" y="696" class="s">IRF4905 P-MOSFET</text>
+  <path d="M564,682 L590,682" class="line" marker-end="url(#ah)"/>
+  <rect x="594" y="644" width="560" height="112" rx="10" fill="#ffffff" stroke="#e0a800" stroke-width="1.4"/>
+  <line x1="780" y1="656" x2="780" y2="744" stroke="#ead9a0"/><line x1="966" y1="656" x2="966" y2="744" stroke="#ead9a0"/>
+  <text x="608" y="668" class="t">5 V servo rail</text><text x="608" y="686" class="s">Pololu D24V50F5, 5 A</text><text x="608" y="708" class="s">6 servos, LED strip, palm</text><text x="608" y="724" class="s">ring, green laser</text>
+  <text x="794" y="668" class="t">5 V logic rail</text><text x="794" y="686" class="s">Pololu D24V22F5, 2.5 A</text><text x="794" y="708" class="s">ESP32 (3.3 V for sensors),</text><text x="794" y="724" class="s">round screen, LiDAR</text>
+  <text x="980" y="668" class="t">Battery voltage</text><text x="980" y="686" class="s">straight off the switch</text><text x="980" y="708" class="s">ELRS radio (7–13 V),</text><text x="980" y="724" class="s">power-LED drivers</text>
+</svg>

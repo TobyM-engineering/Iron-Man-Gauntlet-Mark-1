@@ -1,0 +1,18 @@
+# WiFi credentials - copy each secrets example and fill it in; never commit them
+firmware/lib/GauntletBenchIO/src/secrets.h
+firmware/PuckUpdater/secrets.h
+
+# build output
+build/
+*.bin
+*.elf
+*.map
+
+# generated before every Ironman compile (Ironman/prebuild.sh, flash.sh)
+firmware/Ironman/armpage.h
+firmware/Ironman/hudpage.h
+firmware/Ironman/variant.h
+
+# editors
+.vscode/
+*.swp
