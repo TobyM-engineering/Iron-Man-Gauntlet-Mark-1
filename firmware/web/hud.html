@@ -1,0 +1,799 @@
+<!doctype html>
+<html lang="en" data-theme="green">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HandBench telemetry</title>
+<!--
+  The telemetry page: the second screen next to the arm simulator. Every number on it is read from
+  the board: GET :8080/tele?log=N&info=1 ten times a second - the feed, the gesture detector's
+  state, the servo, the console since byte N and (every 2 s) the board facts - ONE request in
+  flight on ONE keep-alive connection, so the simulator keeps its rate. Nothing is simulated unless
+  the address says ?demo=1. Served by the board itself at :8080/hud (embedded by
+  HandBench/prebuild.sh); ?host=IP runs it from sim/serve.ps1 against a live board.
+  Keys: T theme (green / red / amber), F fullscreen, B the start-up check again, S the simulator.
+  Traces are plotted against the board's own clock (millis in every frame), not arrival time, so
+  WiFi jitter does not wobble them; their scales are fixed by the calibration or step in coarse
+  grid units and never drift. No pop-ups, no announcements (Toby, 2026-09-27).
+-->
+<style>
+:root{--fg:#4dff7c;--fg2:rgba(77,255,124,.62);--fg3:rgba(77,255,124,.30);--line:rgba(77,255,124,.18);--glow:rgba(77,255,124,.28);
+      --bg:#000;--warn:#ffd166;--bad:#ff4d4d;--white:#eaffef;--fs:clamp(10.5px,.6vw + 2.6px,17px)}
+html[data-theme=red]{--fg:#ff4a4a;--fg2:rgba(255,74,74,.62);--fg3:rgba(255,74,74,.30);--line:rgba(255,74,74,.2);--glow:rgba(255,74,74,.28);--white:#fff0f0}
+html[data-theme=amber]{--fg:#ffb000;--fg2:rgba(255,176,0,.62);--fg3:rgba(255,176,0,.30);--line:rgba(255,176,0,.2);--glow:rgba(255,176,0,.28);--white:#fff6e0}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:var(--fs)/1.35 ui-monospace,"Cascadia Mono",Consolas,"SF Mono",Menlo,monospace;overflow:hidden;
+  text-shadow:0 0 .25em var(--glow);font-variant-numeric:tabular-nums}
+body{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:.55em;padding:.65em .9em .45em}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:9;background:repeating-linear-gradient(0deg,rgba(0,0,0,.10) 0 1px,transparent 1px 3px)}
+body.quiet{cursor:none}
+body.quiet footer{opacity:0}
+header{display:flex;align-items:baseline;gap:1.2em;border-bottom:1px solid var(--line);padding-bottom:.35em;white-space:nowrap}
+.brand{font-weight:700;letter-spacing:.2em;font-size:1.15em;cursor:pointer}
+.brand span{font-weight:400;color:var(--fg2);margin-left:.7em;letter-spacing:.16em}
+#link{flex:1;color:var(--fg2);overflow:hidden;text-overflow:ellipsis}
+#link b,dd b,.v{color:var(--fg);font-weight:400}
+#linkbad{color:var(--warn);display:none}
+#link.bad #linkok{display:none}#link.bad #linkbad{display:inline}
+#back{border:1px solid var(--fg2);padding:0 .6em;color:var(--fg2);cursor:pointer;letter-spacing:.06em}
+#back:hover{color:var(--fg);border-color:var(--fg)}
+#clock{letter-spacing:.06em}
+main{display:grid;min-height:0;gap:.55em;grid-template-columns:minmax(0,1.08fr) minmax(0,1.9fr) minmax(0,1.14fr);grid-template-rows:minmax(0,1.25fr) minmax(0,1fr) minmax(0,.9fr);
+  grid-template-areas:"imu flex gest" "ring ori sys" "log log pkt"}
+section{position:relative;min-height:0;min-width:0;border:1px solid var(--line);padding:.5em .7em .55em;display:flex;flex-direction:column;overflow:hidden}
+section::before,section::after{content:"";position:absolute;width:.75em;height:.75em;border:1px solid var(--fg2);pointer-events:none}
+section::before{left:-1px;top:-1px;border-right:0;border-bottom:0}
+section::after{right:-1px;bottom:-1px;border-left:0;border-top:0}
+h2{margin:0 0 .35em;font-size:1em;font-weight:700;letter-spacing:.16em;display:flex;justify-content:space-between;gap:.6em;white-space:nowrap;flex:none}
+h2 small{font-weight:400;letter-spacing:.02em;color:var(--fg2);overflow:hidden;text-overflow:ellipsis}
+#pImu{grid-area:imu}#pFlex{grid-area:flex}#pOri{grid-area:ori}#pGest{grid-area:gest}#pRing{grid-area:ring}#pSys{grid-area:sys}#pLog{grid-area:log}#pPkt{grid-area:pkt}
+canvas{display:block}
+#scope,#oscope{flex:1;min-height:0;width:100%}
+.sensor{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.1em .7em;align-items:center;margin-bottom:.45em}
+.sensor .head{grid-column:1/-1;display:flex;justify-content:space-between;color:var(--fg2);white-space:nowrap}
+.sensor .head b{color:var(--fg);font-weight:700;letter-spacing:.1em}
+.sensor .q{grid-column:1;white-space:nowrap;color:var(--fg2)}
+.sensor .q b{color:var(--fg);font-weight:400;margin-left:.35em}
+.sensor .cube{grid-column:2;grid-row:2/span 4;width:5.2em;height:5.2em}
+.gauge{display:grid;grid-template-columns:3.3em minmax(0,1fr) 4.6em;gap:.5em;align-items:center;white-space:nowrap}
+.gauge span:first-child{color:var(--fg2)}
+.gauge span:last-child{text-align:right}
+.bar{height:.55em;border:1px solid var(--line);position:relative}
+.bar::before{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--fg3)}
+.bar i{position:absolute;top:1px;bottom:1px;background:var(--fg2)}
+.rel{border-top:1px solid var(--line);padding-top:.35em;color:var(--fg2);white-space:nowrap;display:flex;justify-content:space-between;gap:.5em}
+.rel b{color:var(--fg);font-weight:400}
+#gest,#sys{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:.18em}
+.row{display:grid;grid-template-columns:5.2em minmax(0,1fr);gap:.6em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row>span:first-child{color:var(--fg2)}
+.warn{color:var(--warn)}.bad{color:var(--bad)}.dim{color:var(--fg2)}.hi{color:var(--white)}
+.state{display:inline-block;padding:0 .45em;border:1px solid var(--fg2);margin-right:.5em;letter-spacing:.08em;min-width:5.4em;text-align:center}
+.state.on{background:var(--fg2);color:var(--bg);text-shadow:none;border-color:var(--fg2)}
+.chk{margin-right:.9em}
+.chk::before{content:"[ ]";margin-right:.35em;color:var(--fg3)}
+.chk.y::before{content:"[X]";color:var(--fg)}
+.chk.n::before{content:"[ ]";color:var(--warn)}
+.chk.n{color:var(--warn)}
+.fingers b{display:inline-block;width:1.1em;text-align:center;border:1px solid var(--fg2);margin-right:.25em;font-weight:400;color:var(--fg2)}
+.fingers b.c{background:var(--fg2);color:var(--bg);text-shadow:none}
+.fingers b.x{opacity:.35;border-style:dashed}
+#ringwrap{flex:1;min-height:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:.7em;align-items:center}
+#ringvis{width:6.6em;height:6.6em}
+#ringtxt{display:flex;flex-direction:column;gap:.2em;white-space:nowrap;overflow:hidden}
+#rName{font-size:1.35em;letter-spacing:.14em;font-weight:700}
+.lvl{display:inline-flex;gap:2px;vertical-align:middle;margin-left:.4em}
+.lvl i{width:.55em;height:.8em;border:1px solid var(--fg2)}
+.lvl i.on{background:var(--fg2);border-color:var(--fg2)}
+.flag{display:none}.flag.on{display:block}
+dl{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:.12em .8em;overflow:hidden;white-space:nowrap}
+dt{color:var(--fg2)}dd{margin:0;overflow:hidden;text-overflow:ellipsis}
+pre{margin:0;font:inherit;white-space:pre-wrap;word-break:break-all;overflow:hidden;flex:1;min-height:0}
+#log{overflow-y:hidden;color:var(--fg2)}
+#log div{white-space:pre-wrap}
+#log .g{color:var(--fg)}#log .w{color:var(--white)}#log .b{color:var(--bad)}#log .r{color:var(--fg)}
+#pkt{color:var(--fg2);font-size:.92em;line-height:1.3}
+#pkt b{color:var(--fg);font-weight:400}
+#pkthead{color:var(--fg2);white-space:nowrap;flex:none;margin-bottom:.25em}
+footer{color:var(--fg3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.9em;transition:opacity .5s}
+footer b{color:var(--fg2);font-weight:400}
+#demo{display:none;position:fixed;left:50%;top:3.2em;transform:translateX(-50%);z-index:15;padding:.35em 1em;background:var(--warn);color:#241a05;font-weight:700;text-shadow:none;text-align:center;max-width:calc(100vw - 2em)}
+#demo small{font-weight:400}
+html.demo #demo{display:block}
+#boot{position:fixed;inset:0;z-index:20;background:var(--bg);padding:6vh 7vw;transition:opacity .6s;font-size:1.25em}
+#boot.gone{opacity:0;pointer-events:none}
+#boot div{white-space:pre;overflow:hidden;text-overflow:ellipsis}
+#boot .t{font-weight:700;letter-spacing:.22em;margin-bottom:.6em}
+#boot .s{color:var(--fg2)}#boot .s b{color:var(--fg);font-weight:400}
+#boot .s.w b{color:var(--warn)}
+#boot .cur::after{content:"_"}
+@media (max-width:900px){main{grid-template-columns:1fr 1fr;grid-template-rows:auto;grid-template-areas:"flex flex" "ori ori" "imu gest" "ring sys" "log log" "pkt pkt";overflow-y:auto}section{min-height:14em}#scope{min-height:20em}#oscope{min-height:14em}}
+</style>
+</head>
+<body>
+<div id="boot"></div>
+<div id="demo">DEMO PAGE · made-up data, not the rig<br><small>the real one is served by the board itself, http://ironman.local:8080/hud</small></div>
+<header>
+  <div class="brand" id="brand" title="the arm simulator (S)">HANDBENCH<span>TELEMETRY</span></div>
+  <div id="link"><span id="linkok">connecting…</span><span id="linkbad"></span></div>
+  <span id="back" title="back to the arm simulator (S)">simulator</span>
+  <div id="clock">--:--:--</div>
+</header>
+<main>
+  <section id="pImu"><h2>IMU <small>2 × BNO085 · game rotation vector · <span id="imuhz">50</span> Hz</small></h2>
+    <div class="sensor">
+      <div class="head"><b>FOREARM</b><span>bus 1 · SDA 21 SCL 22</span><span id="stA"></span></div>
+      <div class="q">q<b id="qA0">--</b><b id="qA1"></b><b id="qA2"></b><b id="qA3"></b></div>
+      <canvas class="cube" id="cubeArm"></canvas>
+      <div class="gauge"><span>roll</span><div class="bar"><i id="gA0"></i></div><span id="vA0">--</span></div>
+      <div class="gauge"><span>pitch</span><div class="bar"><i id="gA1"></i></div><span id="vA1">--</span></div>
+      <div class="gauge"><span>yaw</span><div class="bar"><i id="gA2"></i></div><span id="vA2">--</span></div>
+    </div>
+    <div class="sensor">
+      <div class="head"><b>HAND</b><span>bus 2 · SDA 17 SCL 16</span><span id="stH"></span></div>
+      <div class="q">q<b id="qH0">--</b><b id="qH1"></b><b id="qH2"></b><b id="qH3"></b></div>
+      <canvas class="cube" id="cubeHand"></canvas>
+      <div class="gauge"><span>roll</span><div class="bar"><i id="gH0"></i></div><span id="vH0">--</span></div>
+      <div class="gauge"><span>pitch</span><div class="bar"><i id="gH1"></i></div><span id="vH1">--</span></div>
+      <div class="gauge"><span>yaw</span><div class="bar"><i id="gH2"></i></div><span id="vH2">--</span></div>
+    </div>
+    <div class="rel"><span>HAND vs FOREARM</span><span>roll <b id="rel0">--</b> pitch <b id="rel1">--</b> yaw <b id="rel2">--</b></span><span id="relnote"></span></div>
+  </section>
+  <section id="pFlex"><h2>FLEX <small>5 × flex sensor · ADC1 · 100 Hz · millivolts, 3V3 through the sensor, 10 k to ground · 8 s window</small></h2>
+    <canvas id="scope"></canvas>
+  </section>
+  <section id="pOri"><h2>ORIENTATION · RANGE <small>roll · pitch · yaw over time · degrees from the rest pose · <span id="oricalnote">the simulator's calibration</span> · LiDAR mm</small></h2>
+    <canvas id="oscope"></canvas>
+  </section>
+  <section id="pGest"><h2>GESTURE <small>thumb triple-crunch · runs on the board at 100 Hz</small></h2>
+    <div id="gest">
+      <div class="row"><span>state</span><span><span class="state" id="gState">--</span><span id="gStateT" class="dim">waiting for the board</span></span></div>
+      <div class="row"><span>thumb</span><span id="gThumb"></span></div>
+      <div class="row"><span>flick</span><span id="gFlick" class="dim"></span></div>
+      <div class="row"><span>flicks</span><span id="gFlicks"></span></div>
+      <div class="row"><span>gaps</span><span id="gGaps"></span></div>
+      <div class="row"><span>rules</span><span><span class="chk" id="gR0"></span><span class="chk" id="gR1"></span><span class="chk" id="gR2"></span></span></div>
+      <div class="row"><span>last</span><span><span class="state" id="gLastB">--</span><span id="gLastT" class="dim"></span></span></div>
+      <div class="row"><span>fingers</span><span><span class="fingers"><b id="gF0">I</b><b id="gF1">M</b><b id="gF2">R</b><b id="gF3">P</b></span> → hand <b class="v" id="gHand">--</b> <span class="dim" id="gFTh"></span></span></div>
+      <div class="row"><span>count</span><span id="gCount"></span></div>
+      <div class="row"><span>laser</span><span><span class="state" id="lzState">--</span><span id="lzText" class="dim">waiting for the board</span></span></div>
+    </div>
+  </section>
+  <section id="pRing"><h2>PALM RING <small>19 × WS2812 · GPIO <span id="ringpin">18</span> · cap <span id="ringcap">30</span> %</small></h2>
+    <div id="ringwrap"><canvas id="ringvis"></canvas>
+      <div id="ringtxt">
+        <div id="rName">--</div>
+        <div>level <b class="v" id="rLvl">-</b>/<span id="rMax">10</span><span class="lvl" id="rSeg"></span></div>
+        <div>draw ≈ <b class="v" id="rMa">--</b> <span class="dim">(20 mA per channel per pixel + 1 mA idle)</span></div>
+        <div class="dim">rgb <span id="rRgb">--</span> · one colour on all 19 · eased 150 ms</div>
+        <div class="flag bad" id="rLow">LOW BATTERY · blinking white</div>
+        <div class="flag warn" id="rHeld">dark · the servo is attached (one load at a time on the 1 A boost)</div>
+        <div class="flag warn" id="rTest">chain test · pixel <span id="rTestI"></span></div>
+      </div>
+    </div>
+  </section>
+  <section id="pSys"><h2>SYSTEM <small id="sysname">ESP32</small></h2>
+    <div id="sys"><dl>
+      <dt>chip</dt><dd id="sChip">waiting for the board</dd>
+      <dt>firmware</dt><dd id="sFw"></dd>
+      <dt>build</dt><dd id="sBuild"></dd>
+      <dt>reset</dt><dd id="sReset"></dd>
+      <dt>heap</dt><dd id="sHeap"></dd>
+      <dt>wifi</dt><dd id="sWifi"></dd>
+      <dt>link</dt><dd id="sLink"></dd>
+      <dt>servo</dt><dd id="sServo"></dd>
+      <dt>battery</dt><dd id="sBatt"></dd>
+      <dt>sensors</dt><dd id="sSens"></dd>
+      <dt>drone link</dt><dd id="sDrone">--</dd>
+      <dt>craft</dt><dd id="sCraft">--</dd>
+      <dt>flight</dt><dd id="sFly">--</dd>
+    </dl></div>
+  </section>
+  <section id="pLog"><h2>CONSOLE <small>what the firmware prints · 4 KB ring · <span id="loghead">head –</span></small></h2><pre id="log"></pre></section>
+  <section id="pPkt"><h2>PACKET <small>GET /tele · raw, as received</small></h2><div id="pkthead"></div><pre id="pkt"></pre></section>
+</main>
+<footer><b>T</b> theme · <b>F</b> fullscreen · <b>B</b> start-up check · <b>S</b> or the simulator button to go back · every number on this page is read from the board at <b id="fhost"></b></footer>
+
+<script>
+'use strict';
+const params = new URLSearchParams(location.search);
+const DEMO = params.get('demo') === '1';
+const servedByBoard = /^https?:$/.test(location.protocol) && location.hostname && !/^(localhost|127\.)/.test(location.hostname);
+const boardHost = params.get('host') || (servedByBoard ? location.host : 'ironman.local');
+const boardName = boardHost.replace(/:\d+$/, '');
+const feedPort = params.get('port') || '8080';
+const BASE = `http://${boardName}:${feedPort}`;
+const WINDOW_MS = 8000;
+const PERIOD_MS = 100;                                      // ten frames a second; the simulator's own two pollers keep the arm at 30+
+const FLEX = ['THUMB', 'INDEX', 'MIDDLE', 'RING', 'PINKY'];
+const ORI = ['FOREARM', 'HAND', 'HAND vs ARM'];
+const $ = id => document.getElementById(id);
+addEventListener('unhandledrejection', e => console.error('unhandled', e.reason));
+const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const pad2 = n => String(n).padStart(2, '0');
+const hms = ms => { const s = Math.floor(ms / 1000); return `${pad2(Math.floor(s / 3600))}:${pad2(Math.floor(s / 60) % 60)}:${pad2(s % 60)}`; };
+const sgn = (v, d = 1) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const setT = (id, t) => { const e = $(id); if (e && e.textContent !== t) e.textContent = t; };   // update text only when it changed: no churn
+const setH = (id, h) => { const e = $(id); if (e && e.innerHTML !== h) e.innerHTML = h; };
+const simUrl = servedByBoard ? BASE + '/' : 'arm.html' + location.search;
+
+// ---- theme ----
+const THEMES = ['green', 'red', 'amber'];
+let theme = params.get('theme') || (() => { try { return localStorage.getItem('handbench.hud.theme'); } catch (e) { return null; } })() || 'green';
+if (!THEMES.includes(theme)) theme = 'green';
+const applyTheme = () => { document.documentElement.dataset.theme = theme; try { localStorage.setItem('handbench.hud.theme', theme); } catch (e) {} };
+applyTheme();
+$('fhost').textContent = DEMO ? 'nowhere - this is demo data' : boardHost;
+if (DEMO) document.documentElement.classList.add('demo');
+
+// ---- the simulator's calibration, if this browser has it (same origin = same localStorage) ----
+let cal = null;
+try { const s = localStorage.getItem('handbench.armcal.v6') || localStorage.getItem('handbench.armcal.v5'); if (s) cal = JSON.parse(s); } catch (e) {}   // v6 since 2026-09-29 (no half pose); a v5 still reads
+const DEAD = 0.05;
+const R_OF = mv => 47000 * (3300 / Math.max(50, Math.min(3250, mv)) - 1);   // 47 k since 2026-10-07; the sensor's resistance from the divider (3V3 -> sensor -> pin -> 47k -> GND), as the simulator does it
+const closedOf = i => { const fx = cal && cal.flex; if (!fx) return null; return i === 0 && fx.thumb !== null && fx.thumb !== undefined ? fx.thumb : fx.fist ? fx.fist[i] : null; };
+function curlOf(i, mv) {                                   // the simulator's own mapping - a straight line in RESISTANCE between flat and closed - so the percentages here match its fingers
+  const fx = cal && cal.flex, c = fx ? closedOf(i) : null;
+  if (!fx || !fx.flat || c === null) return null;
+  if (Math.abs(c - fx.flat[i]) < 30) return null;
+  const rf = R_OF(fx.flat[i]), rc = R_OF(c), k = (R_OF(mv) - rf) / (rc - rf);
+  return Math.max(0, Math.min(1, (k - DEAD) / (1 - DEAD)));
+}
+const zeroed = !!(cal && cal.arm && cal.arm.zero);
+$('oricalnote').textContent = zeroed ? 'the simulator\'s calibration' : 'raw - no zero pose in this browser';
+$('relnote').textContent = zeroed ? 'from the simulator\'s zero pose' : 'raw · no zero pose in this browser';
+
+// ---- quaternions, as in the simulator (w, x, y, z; sensor -> world, Z up) ----
+const Q = {
+  mul: (a, b) => [a[0]*b[0] - a[1]*b[1] - a[2]*b[2] - a[3]*b[3], a[0]*b[1] + a[1]*b[0] + a[2]*b[3] - a[3]*b[2], a[0]*b[2] - a[1]*b[3] + a[2]*b[0] + a[3]*b[1], a[0]*b[3] + a[1]*b[2] - a[2]*b[1] + a[3]*b[0]],
+  conj: q => [q[0], -q[1], -q[2], -q[3]],
+  norm: q => { const n = Math.hypot(q[0], q[1], q[2], q[3]) || 1; return q.map(v => v / n); },
+  rot: (q, v) => { const r = Q.mul(Q.mul(q, [0, v[0], v[1], v[2]]), Q.conj(q)); return [r[1], r[2], r[3]]; },
+  fromAxes: (x, y, z) => {
+    const m00 = x[0], m01 = y[0], m02 = z[0], m10 = x[1], m11 = y[1], m12 = z[1], m20 = x[2], m21 = y[2], m22 = z[2];
+    const tr = m00 + m11 + m22; let w, X, Y, Z;
+    if (tr > 0) { const s = Math.sqrt(tr + 1) * 2; w = s / 4; X = (m21 - m12) / s; Y = (m02 - m20) / s; Z = (m10 - m01) / s; }
+    else if (m00 > m11 && m00 > m22) { const s = Math.sqrt(1 + m00 - m11 - m22) * 2; w = (m21 - m12) / s; X = s / 4; Y = (m01 + m10) / s; Z = (m02 + m20) / s; }
+    else if (m11 > m22) { const s = Math.sqrt(1 + m11 - m00 - m22) * 2; w = (m02 - m20) / s; X = (m01 + m10) / s; Y = s / 4; Z = (m12 + m21) / s; }
+    else { const s = Math.sqrt(1 + m22 - m00 - m11) * 2; w = (m10 - m01) / s; X = (m02 + m20) / s; Y = (m12 + m21) / s; Z = s / 4; }
+    return Q.norm([w, X, Y, Z]);
+  },
+  euler: q => { const [w, x, y, z] = q, d = 180 / Math.PI;
+    return [Math.atan2(2 * (w*x + y*z), 1 - 2 * (x*x + y*y)) * d, Math.asin(Math.max(-1, Math.min(1, 2 * (w*y - z*x)))) * d, Math.atan2(2 * (w*z + x*y), 1 - 2 * (y*y + z*z)) * d]; },
+};
+const cross = (a, b) => [a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]];
+const vnorm = v => { const n = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / n, v[1] / n, v[2] / n]; };
+const vdot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+const fwdLocal = c => { const both = c.fwdDown && c.fwdUp; if (both) { const a = Math.acos(Math.max(-1, Math.min(1, vdot(c.fwdDown, c.fwdUp)))) * 180 / Math.PI; if (a <= 15) return vnorm([c.fwdDown[0] + c.fwdUp[0], c.fwdDown[1] + c.fwdUp[1], c.fwdDown[2] + c.fwdUp[2]]); } return c.fwdDown || c.fwdUp; };
+function segmentQuat(name, q) {                            // rotation from the calibrated rest pose, in the body frame - what the simulator draws
+  const c = cal && cal[name];
+  if (!q) return null;
+  if (!c || !c.zero) return q;
+  const F0 = Q.rot(c.zero, fwdLocal(c) || [1, 0, 0]), n = Math.hypot(F0[0], F0[1]);
+  const F = n < 0.15 ? [1, 0, 0] : [F0[0] / n, F0[1] / n, 0];
+  const RB = Q.fromAxes(F, cross([0, 0, 1], F), [0, 0, 1]);
+  return Q.mul(Q.mul(Q.conj(RB), Q.mul(q, Q.conj(c.zero))), RB);
+}
+
+// ---- state ----
+const S = { tele: null, raw: '', info: null, infoAt: 0, pal: null, connected: false, rtt: 0, hz: 0, frames: 0, bytes: 0, bps: 0, lastT: -1,
+            logHead: null, fired: null, seen: null, flickMarks: [], fireMarks: [] };
+const trace = [[], [], [], [], []];                        // per finger: {tb, mv} - tb = the board's millis when it built the frame
+const otrace = [[], [], []];                               // forearm, hand, hand vs forearm: {tb, e:[roll, pitch, yaw]} in degrees
+const rtrace = [];                                         // LiDAR: {tb, v: mm or null}
+const live = { arm: null, hand: null, armMeta: null, handMeta: null, dA: null, dH: null, eA: null, eH: null, eR: null };
+const boot = { results: [], done: false, t0: performance.now(), endAt: 0 };
+
+// The board's clock, as seen from here: off = local - board, taken as the smallest value over the last few
+// seconds (the frames that travelled fastest), eased. Traces are plotted against board time, so a frame that
+// arrives late lands where it belongs instead of bunching up against the one before it.
+const clock = { off: null, win: [] };
+function noteTime(local, tb) {
+  clock.win.push({ t: local, d: local - tb }); while (clock.win.length && local - clock.win[0].t > 4000) clock.win.shift();
+  let m = Infinity; for (const e of clock.win) if (e.d < m) m = e.d;
+  clock.off = clock.off === null ? m : (m < clock.off ? clock.off + (m - clock.off) * 0.25 : clock.off + (m - clock.off) * 0.02);
+}
+const boardNow = local => local - (clock.off === null ? 0 : clock.off) - 60;   // 60 ms behind the fastest path, so the newest point has landed before the edge reaches it
+function resetTraces() { for (const a of trace) a.length = 0; for (const a of otrace) a.length = 0; rtrace.length = 0; S.flickMarks = []; S.fireMarks = []; clock.off = null; clock.win = []; }
+
+// ---- polling: one request in flight on one connection ----
+let nextInfo = 0, fails = 0;
+async function getText(path) {
+  const t0 = performance.now();
+  const r = await fetch(BASE + path, { cache: 'no-store' });
+  const txt = await r.text();
+  S.rtt = S.rtt ? S.rtt * 0.7 + (performance.now() - t0) * 0.3 : performance.now() - t0;
+  S.bytes += txt.length;
+  return txt;
+}
+async function loop() {
+  const t0 = performance.now();
+  if (DEMO) { try { demoTick(t0); } catch (e) { console.error('demo', e); } await sleep(40); }
+  else {
+    try {
+      const wantInfo = t0 >= nextInfo; if (wantInfo) nextInfo = t0 + 2000;
+      const txt = await getText(`/tele?log=${S.logHead === null ? '' : S.logHead}${wantInfo ? '&info=1' : ''}`);
+      onTele(JSON.parse(txt), txt);
+      if (!S.pal) { S.pal = JSON.parse(await getText('/ring')).colours; }   // the palette's names, once
+      fails = 0; S.connected = true;
+    } catch (e) {
+      if (++fails >= 3) { S.connected = false; }
+      await sleep(fails > 3 ? 600 : 120);
+    }
+  }
+  const period = S.rtt > 120 ? 160 : PERIOD_MS;              // a struggling link gets fewer, not more, requests
+  setTimeout(loop, Math.max(0, period - (performance.now() - t0)));
+}
+setInterval(() => { S.hz = S.frames; S.frames = 0; S.bps = S.bytes; S.bytes = 0; }, 1000);
+
+const pushT = (a, p, nowB) => { a.push(p); while (a.length && nowB - a[0].tb > WINDOW_MS + 1000) a.shift(); };
+function onTele(j, txt) {
+  const im = j.imu || j;
+  const local = performance.now();
+  if (typeof im.t === 'number') {
+    if (S.lastT >= 0 && im.t < S.lastT - 5000) resetTraces();                  // the board rebooted: its clock restarted
+    else if (im.t <= S.lastT) return;                                           // an older frame overtaken by a newer one
+    S.lastT = im.t; noteTime(local, im.t);
+  }
+  const tb = typeof im.t === 'number' ? im.t : boardNow(local), nowB = boardNow(local);
+  S.tele = j; S.raw = txt; S.frames++;
+  for (const n of ['arm', 'hand']) { const s = im[n]; const ok = s && s.ok && !(s.age > 1500); live[n] = ok ? Q.norm(s.q) : null; live[n + 'Meta'] = s || null; }
+  live.dA = live.arm && segmentQuat('arm', live.arm); live.dH = live.hand && segmentQuat('hand', live.hand);
+  live.eA = live.dA ? Q.euler(live.dA) : null; live.eH = live.dH ? Q.euler(live.dH) : null; live.eR = live.dA && live.dH ? Q.euler(Q.mul(Q.conj(live.dA), live.dH)) : null;
+  pushT(otrace[0], { tb, e: live.eA }, nowB); pushT(otrace[1], { tb, e: live.eH }, nowB); pushT(otrace[2], { tb, e: live.eR }, nowB);
+  if (Array.isArray(im.flex)) for (let i = 0; i < 5; i++) pushT(trace[i], { tb, mv: im.flex[i] }, nowB);
+  pushT(rtrace, { tb, v: im.lidar && im.lidar.ok && im.lidar.mm > 0 ? im.lidar.mm : null }, nowB);
+  const g = j.gesture;
+  if (g) {
+    if (S.seen !== null && g.seen > S.seen && Array.isArray(g.last)) {        // new confirmed flicks: tick the thumb trace where they started (board time)
+      const fresh = Math.min(g.seen - S.seen, g.last.length);
+      for (let k = g.last.length - fresh; k < g.last.length; k++) S.flickMarks.push(tb - g.last[k][0]);
+    }
+    S.seen = g.seen;
+    if (S.fired !== null && g.n > S.fired) S.fireMarks.push(tb - (g.vago || 0));   // a hit: a line on the thumb trace, nothing else
+    S.fired = g.n;
+    S.flickMarks = S.flickMarks.filter(t => nowB - t < WINDOW_MS + 1000); S.fireMarks = S.fireMarks.filter(t => nowB - t < WINDOW_MS + 1000);
+  }
+  if (j.log) { if (S.logHead !== null && j.log.head < S.logHead) appendLog('\n[page] the board rebooted - console restarts\n'); S.logHead = j.log.head; setT('loghead', 'head ' + j.log.head); if (j.log.txt) appendLog(j.log.txt); }
+  if (j.info) onInfo(j.info);
+}
+function onInfo(i) { S.info = i; S.infoAt = performance.now(); setT('sysname', `${i.chip} · ${i.cores} cores · ${i.mhz} MHz`); if (i.palm) { setT('ringpin', String(i.palm.pin)); setT('ringcap', String(i.palm.cap)); } if (i.imums) setT('imuhz', String(Math.round(1000 / i.imums))); }
+function ringName(r) { if (!r) return '?'; if (!r.lvl) return 'off'; if (S.pal && S.pal[r.i]) return S.pal[r.i][0]; return `colour ${r.i}`; }
+
+// ---- console ----
+let logTail = '';
+function appendLog(txt) {
+  const el = $('log');
+  const parts = (logTail + txt).split('\n'); logTail = parts.pop();
+  for (const line of parts) {
+    if (!line.trim()) continue;
+    const d = document.createElement('div');
+    d.className = /^gesture: thumb .*-crunch #/.test(line) ? 'w' : /^gesture:|^palm:|^ring:|^battery:|^servo/.test(line) ? 'g' : /BROWNOUT|PANIC|refused|failed|error|no answer/i.test(line) ? 'b' : /^\[net\]|^\[page\]/.test(line) ? 'r' : '';
+    d.textContent = line;
+    el.appendChild(d);
+  }
+  while (el.childElementCount > 400) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+
+// ---- drawing ----
+const scope = $('scope'), sctx = scope.getContext('2d');
+const oscope = $('oscope'), octx = oscope.getContext('2d');
+const ringvis = $('ringvis'), rctx = ringvis.getContext('2d');
+function fit(cv) { const r = cv.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2); const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr)); if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; } return dpr; }
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let C = {};
+function colours() { C = { fg: css('--fg'), fg2: css('--fg2'), fg3: css('--fg3'), line: css('--line'), glow: css('--glow'), warn: css('--warn'), white: css('--white') }; }
+colours();
+const FONT = 'ui-monospace, Cascadia Mono, Consolas, Menlo, monospace';
+
+// the frame every trace panel shares: lane separators, one-second ticks that scroll with the data (board time)
+function laneFrame(ctx, W, H, lanes, x0, x1, nowB, dpr, fs) {
+  ctx.clearRect(0, 0, W, H);
+  ctx.font = `${fs}px ${FONT}`;
+  const laneH = H / lanes;
+  const xOf = tb => x0 + (x1 - x0) * (1 - (nowB - tb) / WINDOW_MS);
+  ctx.strokeStyle = C.line; ctx.lineWidth = 1;
+  for (let i = 0; i < lanes; i++) {
+    const y0 = i * laneH;
+    if (i) { ctx.beginPath(); ctx.moveTo(0, y0 + 0.5); ctx.lineTo(W, y0 + 0.5); ctx.stroke(); }
+    for (let t = Math.ceil((nowB - WINDOW_MS) / 1000) * 1000; t <= nowB; t += 1000) { const x = Math.round(xOf(t)) + 0.5; ctx.beginPath(); ctx.moveTo(x, y0 + laneH * 0.08); ctx.lineTo(x, y0 + laneH * 0.92); ctx.stroke(); }
+  }
+  return { laneH, xOf };
+}
+// A scale that stays put: the range snaps outward to a coarse grid (sym: +-k steps about zero) the moment the data
+// needs it, and steps back in only after the data has sat well inside a smaller one for 20 s. No continuous drift.
+const ranges = {};
+function steppedRange(key, lo, hi, step, sym, now) {
+  let L, H;
+  if (sym) { const m = Math.max(Math.abs(lo), Math.abs(hi), step * 0.01); H = Math.ceil(m / step) * step; L = -H; }
+  else { L = Math.floor(lo / step) * step; H = Math.ceil(hi / step) * step; if (H - L < step) H = L + step; }
+  const r = ranges[key] || (ranges[key] = { lo: L, hi: H, fitSince: null });
+  if (L < r.lo || H > r.hi) { r.lo = Math.min(r.lo, L); r.hi = Math.max(r.hi, H); r.fitSince = null; }
+  else if (L > r.lo || H < r.hi) { if (r.fitSince === null) r.fitSince = now; else if (now - r.fitSince > 20000) { r.lo = L; r.hi = H; r.fitSince = null; } }
+  else r.fitSince = null;
+  return r;
+}
+function strokeSeries(ctx, pts, xOf, yOf, width, alpha, dash, breakAt) {
+  ctx.save(); ctx.lineWidth = width; ctx.globalAlpha = alpha; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.setLineDash(dash || []);
+  ctx.beginPath(); let pen = false, prev = null;
+  for (const p of pts) {
+    if (p.v === null || p.v === undefined) { pen = false; prev = null; continue; }
+    const x = xOf(p.tb), y = yOf(p.v);
+    if (pen && !(breakAt && prev !== null && Math.abs(p.v - prev) > breakAt)) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+    pen = true; prev = p.v;
+  }
+  ctx.stroke(); ctx.restore();
+}
+
+function drawScope(now) {
+  const dpr = fit(scope), W = scope.width, H = scope.height, ctx = sctx;
+  const fs = parseFloat(getComputedStyle(document.body).fontSize) * dpr;
+  const labelW = fs * 6.4, x0 = labelW, x1 = W - fs * 0.6, nowB = boardNow(now);
+  const { laneH, xOf } = laneFrame(ctx, W, H, 5, x0, x1, nowB, dpr, fs);
+  const tele = S.tele, g = tele && tele.gesture;
+  for (let i = 0; i < 5; i++) {
+    const y0 = i * laneH, top = y0 + laneH * 0.14, bot = y0 + laneH * 0.86;
+    const vis = trace[i].filter(p => nowB - p.tb <= WINDOW_MS + 200);
+    let lo = Infinity, hi = -Infinity;
+    for (const p of vis) { if (p.mv < lo) lo = p.mv; if (p.mv > hi) hi = p.mv; }
+    const fx = cal && cal.flex, flat = fx && fx.flat ? fx.flat[i] : null, closed = closedOf(i);
+    if (flat !== null) { lo = Math.min(lo, flat); hi = Math.max(hi, flat); }
+    if (closed !== null) { lo = Math.min(lo, closed); hi = Math.max(hi, closed); }
+    if (!isFinite(lo)) { lo = 0; hi = 100; }
+    const r = steppedRange('f' + i, lo - 10, hi + 10, flat !== null && closed !== null ? 50 : 100, false, now);
+    const yOf = mv => bot - (mv - r.lo) / (r.hi - r.lo) * (bot - top);
+    ctx.setLineDash([3 * dpr, 4 * dpr]); ctx.strokeStyle = C.fg3; ctx.fillStyle = C.fg3;
+    for (const [v, name] of [[flat, 'flat'], [closed, 'closed']]) if (v !== null) { const y = Math.round(yOf(v)) + 0.5; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.fillText(name, x1 - fs * 3.4, y - 2 * dpr); }
+    ctx.setLineDash([]);
+    ctx.fillText(`${r.hi}`, x1 - fs * 6.2, top + fs * 0.15); ctx.fillText(`${r.lo}`, x1 - fs * 6.2, bot + fs * 0.05);
+    if (vis.length > 1) {
+      const pts = vis.map(p => ({ tb: p.tb, v: p.mv }));
+      ctx.strokeStyle = C.fg; strokeSeries(ctx, pts, xOf, yOf, 3.5 * dpr, 0.16); strokeSeries(ctx, pts, xOf, yOf, 1.4 * dpr, 1);
+      const last = vis[vis.length - 1]; ctx.fillStyle = C.white; ctx.beginPath(); ctx.arc(Math.min(xOf(last.tb), x1), yOf(last.mv), 2 * dpr, 0, 7); ctx.fill();
+    }
+    if (i === 0) {                                                        // thumb: every confirmed flick, and every hit
+      ctx.fillStyle = C.fg2;
+      for (const t of S.flickMarks) { const x = xOf(t); if (x < x0) continue; ctx.beginPath(); ctx.moveTo(x, bot + fs * 0.15); ctx.lineTo(x - fs * 0.28, bot + fs * 0.6); ctx.lineTo(x + fs * 0.28, bot + fs * 0.6); ctx.fill(); }
+      for (const t of S.fireMarks) { const x = Math.round(xOf(t)) + 0.5; if (x < x0) continue; ctx.strokeStyle = C.fg; ctx.lineWidth = 1 * dpr; ctx.beginPath(); ctx.moveTo(x, y0 + laneH * 0.05); ctx.lineTo(x, y0 + laneH * 0.95); ctx.stroke(); ctx.fillStyle = C.fg2; ctx.fillText('hit', x + fs * 0.3, y0 + laneH * 0.3); }
+      if (g && g.flick && g.open) { ctx.fillStyle = C.fg2; ctx.fillText(`flick ${g.open[0] - g.open[1]} mV ${g.open[2]} ms`, x1 - fs * 12.5, y0 + laneH * 0.3); }
+    }
+    const mv = vis.length ? vis[vis.length - 1].mv : null, curl = mv !== null ? curlOf(i, mv) : null;
+    const step = Math.min(fs * 1.25, laneH * 0.19), ly = y0 + laneH * 0.3;            // label lines squeeze together in a short lane
+    ctx.fillStyle = C.fg; ctx.fillText(FLEX[i], fs * 0.3, ly);
+    ctx.fillText(mv === null ? '--' : `${mv} mV`, fs * 0.3, ly + step);
+    ctx.fillStyle = C.fg2; ctx.fillText(curl === null ? (mv === null ? '' : 'uncal') : `${Math.round(curl * 100)} % curl`, fs * 0.3, ly + step * 2);
+    if (i === 0 && g && g.armed) { ctx.fillStyle = C.fg3; ctx.fillText(`flick ≥${g.drop} mV/${g.flickms} ms`, fs * 0.3, ly + step * 3); }
+  }
+}
+
+// roll / pitch / yaw of the forearm, the hand and the hand relative to the forearm, one lane each; three line
+// styles because the page is one colour: roll solid, pitch solid and dim, yaw dashed. Yaw wraps at 180: the pen lifts.
+const AXES = [['roll', 1.5, 1, null], ['pitch', 1.2, 0.55, null], ['yaw', 1.2, 1, [5, 4]]];
+function drawOri(now) {
+  const dpr = fit(oscope), W = oscope.width, H = oscope.height, ctx = octx;
+  const fs = parseFloat(getComputedStyle(document.body).fontSize) * dpr;
+  const labelW = fs * 8.2, x0 = labelW, x1 = W - fs * 0.6, nowB = boardNow(now);
+  const { laneH, xOf } = laneFrame(ctx, W, H, 4, x0, x1, nowB, dpr, fs);
+  drawRange(ctx, 3 * laneH, laneH, x0, x1, xOf, nowB, now, dpr, fs);       // the fourth lane: the LiDAR
+  for (let i = 0; i < 3; i++) {
+    const y0 = i * laneH, top = y0 + laneH * 0.14, bot = y0 + laneH * 0.86;
+    const vis = otrace[i].filter(p => nowB - p.tb <= WINDOW_MS + 200);
+    let lo = 0, hi = 0;
+    for (const p of vis) if (p.e) for (const v of p.e) { if (v < lo) lo = v; if (v > hi) hi = v; }
+    const r = steppedRange('o' + i, lo, hi, 45, true, now);
+    const yOf = v => bot - (v - r.lo) / (r.hi - r.lo) * (bot - top);
+    const yz = Math.round(yOf(0)) + 0.5;                                   // the rest pose
+    ctx.setLineDash([3 * dpr, 4 * dpr]); ctx.strokeStyle = C.fg3; ctx.beginPath(); ctx.moveTo(x0, yz); ctx.lineTo(x1, yz); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = C.fg3; ctx.fillText('0°', x1 - fs * 1.4, yz - 2 * dpr);
+    ctx.fillText(`${sgn(r.hi, 0)}°`, x1 - fs * 2.6, top + fs * 0.15); ctx.fillText(`${sgn(r.lo, 0)}°`, x1 - fs * 2.6, bot + fs * 0.05);
+    const cur = vis.length ? vis[vis.length - 1].e : null;
+    const step = Math.min(fs * 1.25, laneH * 0.19);                          // legend lines squeeze together in a short lane
+    AXES.forEach(([name, w, alpha, dash], k) => {
+      const pts = vis.map(p => ({ tb: p.tb, v: p.e ? p.e[k] : null }));
+      ctx.strokeStyle = C.fg;
+      if (pts.length > 1) { if (k === 0) strokeSeries(ctx, pts, xOf, yOf, 3.5 * dpr, 0.14, null, 180); strokeSeries(ctx, pts, xOf, yOf, w * dpr, alpha, dash && dash.map(d => d * dpr), 180); }
+      const ly = y0 + laneH * 0.3 + step * (k + 1);                          // legend: a sample of the line style, the axis and its value now
+      ctx.save(); ctx.globalAlpha = alpha; ctx.lineWidth = w * dpr; ctx.setLineDash(dash ? dash.map(d => d * dpr) : []); ctx.beginPath(); ctx.moveTo(fs * 0.3, ly - fs * 0.35); ctx.lineTo(fs * 1.5, ly - fs * 0.35); ctx.stroke(); ctx.restore();
+      ctx.fillStyle = k === 1 ? C.fg2 : C.fg; ctx.fillText(`${name.padEnd(5, ' ')} ${cur ? sgn(cur[k]).padStart(6, ' ') : '  --'}`, fs * 1.8, ly);
+    });
+    ctx.fillStyle = C.fg; ctx.fillText(ORI[i], fs * 0.3, y0 + laneH * 0.3);
+    if (cur) { const last = vis[vis.length - 1]; ctx.fillStyle = C.white; ctx.beginPath(); ctx.arc(Math.min(xOf(last.tb), x1), yOf(cur[0]), 2 * dpr, 0, 7); ctx.fill(); }
+    else { ctx.fillStyle = C.fg3; ctx.fillText(i === 2 ? 'needs both sensors' : 'no sensor', x0 + fs * 0.3, y0 + laneH * 0.5); }
+  }
+}
+
+// The LiDAR's distance over time, in the ORIENTATION panel's fourth lane. A gap where there was no return.
+function drawRange(ctx, y0, laneH, x0, x1, xOf, nowB, now, dpr, fs) {
+  const top = y0 + laneH * 0.14, bot = y0 + laneH * 0.86;
+  const vis = rtrace.filter(p => nowB - p.tb <= WINDOW_MS + 200);
+  let lo = 0, hi = 0, any = false;
+  for (const p of vis) if (p.v !== null) { any = true; if (p.v > hi) hi = p.v; }
+  const r = steppedRange('lidar', 0, any ? hi : 1000, 500, false, now);
+  const yOf = v => bot - (v - r.lo) / (r.hi - r.lo) * (bot - top);
+  ctx.fillStyle = C.fg3; ctx.fillText(`${(r.hi / 304.8).toFixed(1)} ft`, x1 - fs * 4.2, top + fs * 0.15); ctx.fillText('0', x1 - fs * 1.4, bot + fs * 0.05);
+  ctx.strokeStyle = C.fg;
+  if (vis.length > 1) { strokeSeries(ctx, vis, xOf, yOf, 3.5 * dpr, 0.14); strokeSeries(ctx, vis, xOf, yOf, 1.4 * dpr, 1); }
+  const t = S.tele, z = t && (t.imu || t).lidar, cur = vis.length ? vis[vis.length - 1].v : null;
+  if (cur !== null) { const last = vis[vis.length - 1]; ctx.fillStyle = C.white; ctx.beginPath(); ctx.arc(Math.min(xOf(last.tb), x1), yOf(cur), 2 * dpr, 0, 7); ctx.fill(); }
+  const step = Math.min(fs * 1.25, laneH * 0.19), ly = y0 + laneH * 0.3;
+  ctx.fillStyle = C.fg; ctx.fillText('LIDAR', fs * 0.3, ly);
+  ctx.fillText(!z ? '--' : !z.ok ? 'absent' : z.mm ? `${(z.mm / 304.8).toFixed(1)} ft` : 'no return', fs * 0.3, ly + step);
+  ctx.fillStyle = C.fg2; ctx.fillText(!z || !z.ok ? '0x62 bus 1' : `${z.mm} mm · n ${z.n}`, fs * 0.3, ly + step * 2);
+  if (z && !z.ok) { ctx.fillStyle = C.fg3; ctx.fillText('LIDAR-Lite v4 not answering - power, SDA 21 / SCL 22', x0 + fs * 0.3, y0 + laneH * 0.5); }
+}
+
+function drawCube(cv, q, present) {
+  const dpr = fit(cv), W = cv.width, H = cv.height, ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2, s = Math.min(W, H) * 0.34;
+  const view = p => {                                       // (x, y, z) sensor world -> the simulator's axes, then a fixed 3/4 look
+    const X = p[0], Y = p[2], Z = -p[1];
+    const a = -0.6, b = 0.45, ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
+    const x1 = X * ca + Z * sa, z1 = -X * sa + Z * ca, y1 = Y;
+    const y2 = y1 * cb - z1 * sb;
+    return [cx + x1 * s, cy - y2 * s];
+  };
+  if (!q) { ctx.strokeStyle = C.fg3; ctx.setLineDash([3 * dpr, 3 * dpr]); ctx.strokeRect(cx - s * 0.8, cy - s * 0.5, s * 1.6, s); ctx.setLineDash([]); ctx.fillStyle = C.warn; ctx.font = `${9 * dpr}px ${FONT}`; ctx.textAlign = 'center'; ctx.fillText(present ? 'SILENT' : 'NO SENSOR', cx, cy + 3 * dpr); ctx.textAlign = 'left'; return; }
+  const hx = 1, hy = 0.6, hz = 0.18, V = [];
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) V.push(view(Q.rot(q, [sx * hx, sy * hy, sz * hz])));
+  const E = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]];
+  ctx.strokeStyle = C.fg; ctx.lineWidth = 1 * dpr;
+  ctx.beginPath(); for (const [a, b] of E) { ctx.moveTo(V[a][0], V[a][1]); ctx.lineTo(V[b][0], V[b][1]); } ctx.stroke();
+  const o = view([0, 0, 0]), tip = view(Q.rot(q, [1.5, 0, 0])), up = view(Q.rot(q, [0, 0, 0.7]));
+  ctx.strokeStyle = C.white; ctx.lineWidth = 1.6 * dpr; ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(tip[0], tip[1]); ctx.stroke();
+  ctx.fillStyle = C.white; ctx.beginPath(); ctx.arc(tip[0], tip[1], 2 * dpr, 0, 7); ctx.fill();
+  ctx.strokeStyle = C.fg2; ctx.lineWidth = 1 * dpr; ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(up[0], up[1]); ctx.stroke();
+}
+
+function drawRing(now) {
+  const dpr = fit(ringvis), W = ringvis.width, H = ringvis.height, ctx = rctx;
+  ctx.clearRect(0, 0, W, H);
+  const r = S.tele && (S.tele.imu || S.tele).ring;
+  const cx = W / 2, cy = H / 2, R = Math.min(W, H) * 0.42, R2 = R * 0.55, dot = R * 0.11;
+  const on = r && r.lvl > 0 && !r.held;
+  const k = r ? Math.min(1, r.lvl / (r.max || 10)) : 0;
+  const rgb = r && r.rgb ? r.rgb : [255, 255, 255];
+  const blink = r && r.low ? (Math.floor(now / 1000) % 2 === 0) : false;
+  const pos = [];
+  for (let i = 0; i < 12; i++) { const a = -Math.PI / 2 + i * Math.PI / 6; pos.push([cx + R * Math.cos(a), cy + R * Math.sin(a)]); }
+  for (let i = 0; i < 6; i++) { const a = -Math.PI / 2 + i * Math.PI / 3; pos.push([cx + R2 * Math.cos(a), cy + R2 * Math.sin(a)]); }
+  pos.push([cx, cy]);
+  const testI = r && r.test >= 0 ? r.test : -1;
+  pos.forEach((p, i) => {
+    let lit = on, col = rgb, alpha = 0.25 + 0.75 * k;
+    if (r && r.low) { lit = blink; col = [255, 255, 255]; alpha = 0.9; }
+    if (testI >= 0) { const chain = i < 12 ? i + 7 : i - 12; lit = chain === testI; col = [255, 255, 255]; alpha = 0.9; }   // the chain test walks one pixel: inner ring first on this ring
+    ctx.beginPath(); ctx.arc(p[0], p[1], dot, 0, 7);
+    if (lit) { ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${alpha})`; ctx.shadowColor = `rgb(${col[0]},${col[1]},${col[2]})`; ctx.shadowBlur = 5 * dpr * (0.5 + k); ctx.fill(); ctx.shadowBlur = 0; }
+    else { ctx.strokeStyle = C.fg3; ctx.lineWidth = 1 * dpr; ctx.stroke(); }
+  });
+  ctx.strokeStyle = C.line; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, R + dot * 1.8, 0, 7); ctx.stroke();
+}
+
+// ---- panels (text), updated in place ten times a second ----
+function gaugeSet(barId, valId, v) {
+  const bar = $(barId); const p = Math.max(-180, Math.min(180, v || 0));
+  bar.style.left = (50 + Math.min(0, p) / 3.6) + '%'; bar.style.width = (Math.abs(p) / 3.6) + '%';
+  setT(valId, v === null || v === undefined ? '--' : sgn(v) + '°');
+}
+function sensorSet(k, q, e, meta) {
+  const st = !meta ? '<span class="warn">no data</span>' : !meta.ok ? '<span class="warn">MISSING</span>' : meta.age > 1500 ? `<span class="warn">SILENT ${Math.round(meta.age / 1000)} s</span>` : `n <span class="v">${meta.n}</span> · age <span class="v">${meta.age}</span> ms · resets <span class="v">${meta.resets}</span>`;
+  setH('st' + k, st);
+  for (let i = 0; i < 4; i++) setT(`q${k}${i}`, q ? sgn(q[i], 4) : (i ? '' : '--'));
+  for (let i = 0; i < 3; i++) gaugeSet(`g${k}${i}`, `v${k}${i}`, e ? e[i] : null);
+}
+function renderImu() {
+  sensorSet('A', live.arm, live.eA, live.armMeta);
+  sensorSet('H', live.hand, live.eH, live.handMeta);
+  for (let i = 0; i < 3; i++) setT('rel' + i, live.eR ? sgn(live.eR[i]) : '--');
+}
+function chkSet(id, ok, txt) { const e = $(id); e.className = 'chk ' + (ok === null ? '' : ok ? 'y' : 'n'); setH(id, txt); }
+function renderGest() {
+  const t = S.tele, g = t && t.gesture;
+  if (!g) return;
+  const st = $('gState');
+  if (!g.armed) { st.className = 'state'; setT('gState', 'NOT ARMED'); setH('gStateT', '<span class="warn">calibrate the fingers on the simulator page - it sends the thumb numbers</span>'); }
+  else if (g.flick) { st.className = 'state on'; setT('gState', 'FLICK OPEN'); setH('gStateT', `from ${g.open[0]} ↓ ${g.open[1]} mV = <span class="hi">${g.open[0] - g.open[1]} mV</span> in ${g.open[2]} ms`); }
+  else { st.className = 'state'; setT('gState', 'IDLE'); setH('gStateT', `<span class="dim">watching for a fall of ≥ ${g.drop} mV inside ${g.flickms} ms</span>`); }
+  setH('gThumb', `<b class="v">${g.mv}</b> mV smoothed · <b class="v">${g.raw}</b> raw · flat ${g.tf} · closed-in-a-fist ${g.tc} · swing ${g.tf - g.tc} mV`);
+  setT('gFlick', `opens: fall ≥ ${g.drop} mV in ≤ ${g.flickms} ms · ends: back up ${g.relpct} % (≥ ${g.relmin} mV) or ${g.plateau} ms pause · dropped after ${g.maxms} ms`);
+  const last = Array.isArray(g.last) ? g.last : [];
+  setH('gFlicks', last.length ? last.map((f, k) => `#${k + 1} <b class="v">−${(f[0] / 1000).toFixed(2)} s</b> ${f[1]} mV <span class="dim">(depth ${f[2]})</span>`).join(' · ') + ` <span class="dim">${last.length} of ${g.flicks}</span>` : `<span class="dim">none pending - needs ${g.flicks} in one rhythm</span>`);
+  if (last.length >= 3) {
+    const g1 = last[0][0] - last[1][0], g2 = last[1][0] - last[2][0], hiG = Math.max(g1, g2), loG = Math.min(g1, g2);
+    const fast = hiG <= g.maxgap && loG >= g.mingap, even = hiG * 10 <= loG * g.even;
+    const alike3 = v => { const hi = Math.max(...v), lo = Math.min(...v); return hi * 10 <= lo * g.ampratio; };
+    const aE = alike3(last.map(f => f[1])), aD = alike3(last.map(f => f[2]));
+    setH('gGaps', `<b class="v">${g1}</b> / <b class="v">${g2}</b> ms`);
+    chkSet('gR0', fast, `gaps ${g.mingap}–${g.maxgap} ms`); chkSet('gR1', even, `even ≤ ${(g.even / 10).toFixed(1)}×`);
+    chkSet('gR2', aE || aD, `alike ≤ ${(g.ampratio / 10).toFixed(1)}× <span class="dim">(size ${aE ? 'yes' : 'no'} · depth ${aD ? 'yes' : 'no'})</span>`);
+  } else {
+    setH('gGaps', '<span class="dim">--</span>');
+    chkSet('gR0', null, `gaps ${g.mingap}–${g.maxgap} ms`); chkSet('gR1', null, `even ≤ ${(g.even / 10).toFixed(1)}×`); chkSet('gR2', null, `alike ≤ ${(g.ampratio / 10).toFixed(1)}×`);
+  }
+  const fired = /FIRED/.test(g.v || '');
+  setT('gLastB', g.v ? (fired ? 'fired' : 'rejected') : '--');
+  setH('gLastT', g.v ? `${esc(g.v.replace(/ FIRED/, ''))} <span class="dim">· ${(g.vago / 1000).toFixed(1)} s ago</span>${fired && g.vago < g.cooldown ? ` <span class="dim">· cooldown ${g.cooldown} ms</span>` : ''}` : '<span class="dim">nothing judged yet</span>');
+  if (g.fingers) for (let k = 0; k < 4; k++) { const e = $('gF' + k); const c = k > 0 && g.f[k] && g.fingers[k] < g.f[k]; const cls = k === 0 ? 'x' : c ? 'c' : ''; if (e.className !== cls) e.className = cls; e.title = k === 0 ? `index ${g.fingers[k]} mV - not consulted` : `${g.fingers[k]} mV, closed below ${g.f[k]}`; }
+  setT('gHand', g.fist ? 'CLOSED' : 'OPEN');
+  setT('gFTh', `(closed = middle, ring, pinky below ${g.f.slice(1).join(' / ')} mV${g.fl && g.fl[1] ? ' = half way from flat to closed' : ''}; pointer ignored) · open: off → on → white ↔ red · closed: off · pinky dip: brighter · pointer dip: dimmer`);
+  setH('gCount', `hits <b class="v">${g.n}</b> · flicks <b class="v">${g.seen}</b> · dropped in cooldown ${g.dropped} · too small ${g.wobbles} · never released ${g.held} · dips <b class="v">↑${g.dipup || 0} ↓${g.dipdown || 0}</b>${g.dipign ? ` <span class="dim">(${g.dipign} ignored, other fingers moved)</span>` : ''}${g.dip ? ` <span class="hi">${g.dip === 4 ? 'PINKY' : 'INDEX'} DIPPING</span>` : ''}`);
+  const l = (t.imu || t).laser, ls = $('lzState');
+  if (l) {
+    ls.className = 'state' + (l.on ? ' on' : ''); setT('lzState', l.on ? 'FIRING' : 'off');
+    const w = typeof l.w === 'number' ? `wrist flex <b class="v">${sgn(l.w, 0)}°</b> side <b class="v">${sgn(l.wy, 0)}°</b> twist <b class="v">${sgn(l.wr, 0)}°</b>${l.inl ? ' <span class="dim">flat</span>' : ''}` : l.zeroed === 0 ? '<span class="warn">wrist not zeroed - step 1 on the simulator</span>' : '<span class="warn">wrist n/a - needs both IMUs</span>';
+    const hand = l.fist ? 'closed' : typeof l.open === 'number' && l.rel && l.open >= l.rel ? 'open' : 'loose';
+    setH('lzText', `${w} · hand ${hand}${typeof l.open === 'number' ? ` <span class="dim">(${sgn(l.open, 0)} mV from closed)</span>` : ''} · ${['auto', 'forced on', 'forced off'][l.force] || 'auto'} · shots <b class="v">${l.n}</b> · <span class="dim">${esc(l.why)}, ${(l.ago / 1000).toFixed(1)} s ago · GPIO 27</span>`);
+  }
+}
+let segBuilt = 0;
+function renderRing() {
+  const t = S.tele, r = t && (t.imu || t).ring;
+  if (!r) return;
+  const nm = $('rName'), name = (r.lvl ? ringName(r) : 'off').toUpperCase();
+  setT('rName', name);
+  const style = r.lvl ? `color:rgb(${r.rgb.join(',')});text-shadow:0 0 .3em rgba(${r.rgb.join(',')},.5)` : '';
+  if (nm.getAttribute('style') !== style) nm.setAttribute('style', style);
+  const max = r.max || 10;
+  if (segBuilt !== max) { segBuilt = max; $('rSeg').innerHTML = Array.from({ length: max }, () => '<i></i>').join(''); setT('rMax', String(max)); }
+  const segs = $('rSeg').children; for (let k = 0; k < segs.length; k++) { const on = k < r.lvl; if (segs[k].classList.contains('on') !== on) segs[k].className = on ? 'on' : ''; }
+  setT('rLvl', String(r.lvl)); setT('rMa', `${(r.ma / 1000).toFixed(2)} A`); setT('rRgb', r.rgb.join(' '));
+  $('rLow').classList.toggle('on', !!r.low); $('rHeld').classList.toggle('on', !!r.held); $('rTest').classList.toggle('on', r.test >= 0); if (r.test >= 0) setT('rTestI', String(r.test));
+}
+function renderSys() {
+  const i = S.info, t = S.tele;
+  if (!i) return;
+  const bars = n => { const k = n >= -60 ? 5 : n >= -67 ? 4 : n >= -74 ? 3 : n >= -80 ? 2 : 1; return '▮'.repeat(k) + '▯'.repeat(5 - k); };
+  const rssi = t && typeof (t.imu || t).rssi === 'number' ? (t.imu || t).rssi : i.rssi;
+  const sv = t && t.servo;
+  setH('sChip', `<b>${esc(i.chip)}</b> · ${i.cores} cores · ${i.mhz} MHz · flash ${(i.flash / 1048576).toFixed(0)} MB`);
+  setH('sFw', `HandBench · sketch <b>${(i.size / 1024).toFixed(0)} KB</b> · md5 <b>${esc(String(i.sketch).slice(0, 8))}</b>`);
+  setH('sBuild', `<b>${esc(i.build)}</b> · arduino-esp32 ${esc(i.core)}`);
+  setH('sReset', `${esc(i.reset)} · up <b>${hms(i.up + performance.now() - S.infoAt)}</b>`);
+  setH('sHeap', `<b>${((t && t.heap) || i.heap) / 1024 | 0} KB</b> free · low mark ${i.heapmin / 1024 | 0} KB`);
+  setH('sWifi', `<b>${esc(i.ip)}</b>:${i.feed} · <b>${rssi}</b> dBm ${bars(rssi)}${rssi <= -80 ? ' <span class="warn">weak</span>' : ''} · ${esc(i.host)}.local`);
+  setH('sLink', `<b>${S.hz}</b> frames/s · <b>${S.rtt.toFixed(0)}</b> ms round trip · ${(S.bps / 1024).toFixed(1)} KB/s · one request in flight, one connection`);
+  setH('sServo', `GPIO ${sv ? sv.pin : i.pins.servo} · <b>${sv ? sv.us : '--'}</b> µs · ${sv ? (sv.sweep ? '<span class="warn">sweeping</span>' : sv.on ? '<span class="warn">attached</span>' : 'detached') : ''}`);
+  setH('sBatt', `PowerBoost LBO on GPIO ${i.pins.lbo} · ${t && t.low ? '<span class="bad">LOW</span>' : 'cell fine'}`);
+  const z = t && (t.imu || t).lidar;
+  setH('sSens', `${i.imus} × BNO085 @ ${Math.round(1000 / i.imums)} Hz · flex GPIO ${i.pins.flex.join(' ')} @ ${Math.round(1000 / i.flexms)} Hz · LiDAR ${!z ? '--' : z.ok ? '<b>ok</b>' : '<span class="warn">absent</span>'}`);
+  const f = t && (t.imu || t).fly;                             // ELRS Nano TX over CRSF on GPIO 23, and the hand as the sticks (crsf.* / fly.*)
+  if (!f) { setH('sDrone', '<span class="dim">not in this firmware</span>'); setT('sCraft', '--'); setT('sFly', '--'); }
+  else {
+    setH('sDrone', `ELRS Nano TX · CRSF GPIO 23 · <b>${f.frames}</b> frames sent${f.stream ? '' : ' <span class="warn">(frames OFF)</span>'} · ${!f.heard ? '<span class="warn">module SILENT</span>' : !f.lq ? 'module ok · <span class="warn">no drone (LQ 0)</span>' : `drone <b>LQ ${f.lq}</b> · <b>${f.rssi}</b> dBm · rf ${f.rf} · down LQ ${f.dlq}`}${f.bind ? ` · <span class="hi">BINDING burst ${f.bind}</span>` : ''}`);
+    setH('sCraft', !f.mode ? '<span class="dim">no telemetry from the drone</span>' : `mode <b>${esc(f.mode)}</b> ${/\*/.test(f.mode) ? '(disarmed, ready)' : /!/.test(f.mode) ? '<span class="warn">(arming blocked)</span>' : '<span class="bad">(ARMED)</span>'} · ${f.vlow ? `<span class="bad">${f.volts.toFixed(2)} V LOW - land</span>` : `<b>${f.volts.toFixed(2)}</b> V`} ${f.pct} % · ${f.attage ? `attitude roll <b>${f.att[0]}</b> pitch <b>${f.att[1]}</b> °` : 'no attitude'}`);
+    setH('sFly', `${f.armed ? `<span class="bad">ARMED${f.bench ? ` (${f.bench} s left)` : ''}${f.hold ? ' · make a fist once' : f.lift === 0 ? ' · motors idle until the fingers lift' : f.lift ? ' · throttle live' : ''}</span>` : 'disarmed · watching for the squeeze'}${typeof f.lvl === 'number' ? ` · hand ${f.lvl ? 'level' : `<span class="dim">not level (${f.hr}/${f.hp}°)</span>`} · wrist ${f.inl ? 'in line' : '<span class="dim">not in line</span>'}` : ''} · thr <b>${Math.round(f.thr * 100)}</b> % roll <b>${(f.roll * 100).toFixed(0)}</b> pitch <b>${(f.pitch * 100).toFixed(0)}</b> · ch ${f.ch.join(' ')} · fingers ${f.curl < 0 ? '--' : f.curl.toFixed(2)} · ${f.armed ? 'point + two thumb presses = disarm' : f.block ? `<span class="dim">to arm: ${esc(f.block)}</span>` : 'a fist, level, wrist straight - a quick open-and-close arms'}`);
+  }
+}
+function renderHeader() {
+  const el = $('link'), t = S.tele, im = t && (t.imu || t);
+  setT('clock', new Date().toLocaleTimeString([], { hour12: false }));
+  if (DEMO) { el.className = ''; setH('linkok', `DEMO DATA · no board · <b>${S.hz}</b> frames/s`); return; }
+  if (!S.connected) { el.className = 'bad'; setT('linkbad', `NO LINK · ${boardHost} · rebooting after a firmware push (30-60 s), off, or out of WiFi range`); return; }
+  el.className = '';
+  setH('linkok', `LINK <b>${boardHost}</b> · RSSI <b>${im && typeof im.rssi === 'number' ? im.rssi : '--'}</b> dBm · <b>${S.hz}</b> frames/s · <b>${S.rtt.toFixed(0)}</b> ms` +
+    (S.info ? ` · SKETCH <b>${esc(String(S.info.sketch).slice(0, 8))}</b> · UP <b>${hms(S.info.up + performance.now() - S.infoAt)}</b>` : ''));
+}
+function renderPacket() {
+  if (!S.raw) return;
+  setH('pkthead', `frame <b class="v">${S.lastT}</b> ms board time · <b class="v">${S.raw.length}</b> bytes · <b class="v">${S.hz}</b>/s`);
+  $('pkt').innerHTML = esc(S.raw.slice(0, 1600)).replace(/-?\d+(\.\d+)?/g, '<b>$&</b>');
+}
+
+// ---- the start-up check: each line is confirmed by the data itself ----
+const CHECKS = [
+  ['link ' + (DEMO ? 'demo' : BASE), () => S.tele ? `OK  ${(S.tele.imu || S.tele).rssi} dBm` : null],
+  ['feed /tele keep-alive', () => S.frames + S.hz >= 5 ? `OK  ${S.hz || S.frames} frames/s` : null],
+  ['imu forearm  BNO085 bus 1', () => live.armMeta ? (live.arm ? `OK  n=${live.armMeta.n}` : '!!  missing') : null],
+  ['imu hand     BNO085 bus 2', () => live.handMeta ? (live.hand ? `OK  n=${live.handMeta.n}` : '!!  missing') : null],
+  ['flex 5 ch    ADC1 100 Hz', () => S.tele && (S.tele.imu || S.tele).flex ? `OK  ${(S.tele.imu || S.tele).flex.join(' ')} mV` : null],
+  ['gesture      thumb triple-crunch', () => S.tele && S.tele.gesture ? (S.tele.gesture.armed ? `OK  armed  flat ${S.tele.gesture.tf} / closed ${S.tele.gesture.tc} mV` : '!!  not armed') : null],
+  ['palm ring    19 px WS2812', () => S.tele && (S.tele.imu || S.tele).ring ? `OK  ${ringName((S.tele.imu || S.tele).ring)}` : null],
+  ['lidar        LIDAR-Lite v4 0x62 bus 1', () => { const z = S.tele && (S.tele.imu || S.tele).lidar; return !S.tele ? null : !z ? '--  not in this firmware' : z.ok ? `OK  ${z.mm ? (z.mm / 304.8).toFixed(1) + ' ft (' + z.mm + ' mm)' : 'no return'}` : '!!  absent'; }],
+  ['laser        GPIO 27 MOSFET', () => { const l = S.tele && (S.tele.imu || S.tele).laser; return !S.tele ? null : !l ? '--  not in this firmware' : `OK  ${l.on ? 'FIRING' : 'off'}${typeof l.w === 'number' ? `  wrist flex ${sgn(l.w, 0)} deg` : l.zeroed === 0 ? '  (not zeroed - step 1)' : '  (needs both IMUs)'}`; }],
+  ['drone link   ELRS CRSF GPIO 23', () => { const f = S.tele && (S.tele.imu || S.tele).fly; return !S.tele ? null : !f ? '--  not in this firmware' : !f.heard ? '!!  module silent' : f.lq ? `OK  drone linked LQ ${f.lq}` : 'OK  module heard, no drone yet'; }],
+  ['console      /log', () => S.logHead !== null ? `OK  head ${S.logHead}` : null],
+  ['system       /info', () => S.info ? `OK  ${S.info.chip} · build ${S.info.build}` : null],
+];
+function startBoot() {
+  boot.t0 = performance.now(); boot.done = false; boot.endAt = 0; boot.results = CHECKS.map(() => null);
+  const b = $('boot'); b.className = ''; b.innerHTML = '<div class="t">HANDBENCH TELEMETRY</div>' + CHECKS.map(() => '<div class="s" style="display:none"></div>').join('') + '<div class="s" id="bootend" style="display:none"></div>';
+}
+function tickBoot(now) {
+  if (boot.done) return;
+  const els = $('boot').querySelectorAll('.s'), el = now - boot.t0;
+  const want = Math.min(CHECKS.length, Math.floor(el / 160));
+  let allDone = true;
+  for (let i = 0; i < CHECKS.length; i++) {
+    if (i >= want) { allDone = false; break; }
+    const d = els[i]; d.style.display = '';
+    if (boot.results[i] === null) { const r = CHECKS[i][1](); if (r !== null) boot.results[i] = r; else if (el > 7000) boot.results[i] = '--  no answer'; }
+    const res = boot.results[i];
+    const h = `> ${CHECKS[i][0].padEnd(34, ' ')}${res === null ? '<span class="cur">' : `<b>${esc(res)}</b>`}`;
+    if (d.innerHTML !== h) d.innerHTML = h;
+    d.className = 's' + (res && /^!!|^--/.test(res) ? ' w' : '');
+    if (res === null) allDone = false;
+  }
+  if (allDone && want === CHECKS.length) {
+    const end = els[CHECKS.length]; end.style.display = '';
+    const bad = boot.results.filter(r => /^!!|^--/.test(r)).length;
+    end.innerHTML = bad ? `<span class="w">> ${bad} check${bad > 1 ? 's' : ''} not clean - see the panels</span>` : '> ready';
+    if (!boot.endAt) boot.endAt = now;
+    if (now - boot.endAt > 900) endBoot();
+  }
+}
+function endBoot() { boot.done = true; $('boot').className = 'gone'; }
+
+// ---- frame ----
+let lastText = 0, lastSys = 0, lastPkt = 0;
+function renderAll(now, force) {
+  drawScope(now); drawOri(now); drawRing(now);
+  if (force || now - lastText > 100) {
+    lastText = now;
+    renderImu(); renderGest(); renderRing(); renderHeader();
+    drawCube($('cubeArm'), live.dA, !!(live.armMeta && live.armMeta.ok));
+    drawCube($('cubeHand'), live.dH, !!(live.handMeta && live.handMeta.ok));
+  }
+  if (force || now - lastPkt > 250) { lastPkt = now; renderPacket(); }
+  if (force || now - lastSys > 500) { lastSys = now; renderSys(); }
+  tickBoot(now);
+}
+function frame(now) { renderAll(now, false); requestAnimationFrame(frame); }
+setInterval(() => { if (document.hidden) renderAll(performance.now(), true); }, 1000);   // a hidden tab gets no animation frames; keep it current at the throttled rate
+window.hb = { S, trace, otrace, rtrace, live, clock, render: () => renderAll(performance.now(), true), endBoot: () => endBoot() };   // console / screenshot checks
+
+// ---- keys and quiet mode ----
+let quietTimer = 0;
+const wake = () => { document.body.classList.remove('quiet'); clearTimeout(quietTimer); quietTimer = setTimeout(() => document.body.classList.add('quiet'), 8000); };
+addEventListener('mousemove', wake); wake();
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (!boot.done) { endBoot(); return; }
+  if (k === 't') { theme = THEMES[(THEMES.indexOf(theme) + 1) % 3]; applyTheme(); colours(); }
+  else if (k === 'f') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }
+  else if (k === 'b') startBoot();
+  else if (k === 's') location.href = simUrl;
+});
+$('boot').addEventListener('click', endBoot);
+$('brand').onclick = () => { location.href = simUrl; };
+$('back').onclick = () => { location.href = simUrl; };
+
+// ---- demo data (no board): the shapes are right, the numbers are made up ----
+let dT = 0, dSeen = 0, dFired = 0, dLast = [], dLogT = 0, dCyc = -1, dRing = { i: 0, lvl: 0, max: 10, held: 0, ma: 1, rgb: [255, 255, 255], test: -1, low: 0 }, dNextCrunch = 4, dVerdict = '', dVerdictAt = 0, dOpen = [0, 0, 0], dFlick = 0, dLogHead = 40000, dLogTxt = '';
+const DPAL = [['white', 255, 255, 255], ['repulsor', 200, 225, 255], ['red', 255, 0, 0], ['orange', 255, 80, 0], ['amber', 255, 160, 0], ['green', 0, 255, 60], ['cyan', 0, 200, 255], ['blue', 0, 60, 255], ['magenta', 255, 0, 160]];
+let dPrev = 0;
+function demoTick(now) {
+  dT += dPrev ? Math.min(0.5, (now - dPrev) / 1000) : 0.04; dPrev = now;   // the pretend board clock runs at real time, like millis() does
+  S.pal = DPAL;
+  const tb = Math.round(dT * 1000);
+  const aq = Q.norm([1, 0.25 * Math.sin(dT * 0.5), 0.35 * Math.sin(dT * 0.6), 0.2 * Math.sin(dT * 0.9)]);
+  const hq = Q.norm(Q.mul(aq, [1, 0.3 * Math.sin(dT * 1.3), 0.25 * Math.sin(dT * 1.1), 0.1 * Math.sin(dT * 0.7)]));
+  const flex = [0, 1, 2, 3, 4].map(i => Math.round(800 - 120 * (0.5 + 0.5 * Math.sin(dT * (0.6 + 0.2 * i) + i)) + (Math.random() - 0.5) * 6));
+  const inBurst = dT > dNextCrunch && dT < dNextCrunch + 1.0;                 // a triple crunch on the thumb now and then
+  let logAdd = '';
+  if (inBurst) { const ph = (dT - dNextCrunch) / 0.33, k = ph % 1, cyc = Math.floor(ph); flex[0] -= Math.round(k < 0.35 ? 110 * (k / 0.35) : 110 * Math.max(0, 1 - (k - 0.35) / 0.4)); dFlick = k < 0.35 ? 1 : 0; dOpen = dFlick ? [792, flex[0], Math.round(k * 330)] : [0, 0, 0];
+    if (k >= 0.35 && dCyc !== cyc) { dCyc = cyc; dSeen++; dLast.push({ tb: tb - Math.round((k - 0.35) * 330), amp: 100 + Math.round(Math.random() * 20), depth: 105 + Math.round(Math.random() * 20) }); if (dLast.length > 3) dLast.shift();
+      if (dLast.length === 3) { dFired++; dVerdict = `#${dFired} FIRED: gaps 330 / 330 ms, sizes ${dLast.map(f => f.amp).join(' / ')} mV, hand open`; dVerdictAt = tb; dRing = Object.assign({}, dRing, dRing.lvl === 0 ? { lvl: 10, i: 0, rgb: [255, 255, 255], ma: 363 } : dRing.i === 0 ? { i: 2, rgb: [255, 0, 0], ma: 133 } : { i: 0, rgb: [255, 255, 255], ma: 363 }); dLast = []; logAdd += `gesture: thumb triple-crunch #${dFired} (gaps 330 / 330 ms), other fingers open\npalm: ${dRing.i === 2 ? 'red' : 'white'} 10/10 ~${(dRing.ma / 1000).toFixed(2)} A\n`; } } }
+  else { dFlick = 0; dOpen = [0, 0, 0]; dCyc = -1; if (dT > dNextCrunch + 1) dNextCrunch = dT + 6 + Math.random() * 6; }
+  if (dT - dLogT > 2.5) { dLogT = dT; logAdd += ['arm  roll +1.2 pitch -3.4 yaw +12.0  | hand roll -4.1 pitch +8.8 yaw +15.2', 'flex 781 812 790 803 799', '[net] rssi -71 dBm', 'battery: LBO high - cell fine (checked 30 s)'][Math.floor(Math.random() * 4)] + '\n'; }
+  dLogHead += logAdd.length;
+  const firing = (dT % 12) > 8;
+  const j = { imu: { t: tb, arm: { ok: 1, q: aq, n: Math.round(dT * 50), age: 8, resets: 0, why: 0 }, hand: { ok: 1, q: hq, n: Math.round(dT * 50), age: 12, resets: 1, why: 2 }, flex, rssi: -71, dbl: dFired, ring: dRing,
+             lidar: { ok: 1, mm: Math.round(1500 + 700 * Math.sin(dT * 0.4)), age: 40, n: Math.floor(dT * 10) },
+             laser: { on: firing ? 1 : 0, force: 0, w: firing ? 16 : 2, wy: -3, wr: 4, open: firing ? -60 : 150, rel: 25, fire: 12, zeroed: 1, fist: firing ? 1 : 0, inl: firing ? 0 : 1, fresh: 1, n: Math.floor(dT / 12), why: firing ? 'fist + quick wrist flick' : 'fingers let go', ago: 500 },
+             fly: { en: 0, armed: 0, thr: 0, roll: 0, pitch: 0, curl: 0.12, thumb: 0.1, wf: 2, wt: -3, hand: 1, ch: [992, 992, 172, 992, 172], frames: Math.round(dT * 50), stream: 1, heard: 1, age: 120, lq: 100, rssi: -38, rf: 4, dlq: 100, mode: 'ANGL*', fcage: 200, volts: 3.9, pct: 70, att: [1, -2], attage: 150, arms: 0, ago: 0, why: 'boot', block: 'flight mode is off (fly on)' } },
+    gesture: { tf: 796, tc: 668, drop: 20, ampmin: 20, f: [640, 655, 655, 595], fl: [850, 840, 860, 790], fx: [430, 470, 450, 400], armed: 1, n: dFired, dropped: 0, wobbles: 2, held: 1, dipup: 0, dipdown: 0, dipign: 0, dip: 0, mv: flex[0], raw: flex[0] + 2, flick: dFlick, fist: 0, flicks: 3, maxgap: 600, mingap: 150, even: 22, ampratio: 30, cooldown: 600, flickms: 80, plateau: 80, maxms: 700, relpct: 15, relmin: 8,
+      open: dOpen, seen: dSeen, last: dLast.map(f => [tb - f.tb, f.amp, f.depth]), fingers: flex.slice(1), v: dVerdict, vago: dVerdict ? tb - dVerdictAt : 0 },
+    servo: { pin: 26, us: 1500, on: 0, sweep: 0 }, low: 0, heap: 182000, log: { head: dLogHead, txt: logAdd } };
+  if (!S.info) j.info = { host: 'handbench', ip: '192.0.2.10', rssi: -71, up: 0, build: 'demo', sketch: 'demo0000', size: 1190000, chip: 'ESP32-D0WD-V3 rev 3', cores: 2, mhz: 240, flash: 4194304, heap: 182000, heapmin: 150000, core: '3.3.11', reset: 'POWERON', imus: 2, feed: 8080, flexms: 10, imums: 20, palm: { pin: 18, px: 19, cap: 30 }, pins: { flex: [32, 33, 34, 35, 39], lbo: 19, servo: 26 } };
+  S.connected = true; S.rtt = 17;
+  onTele(j, JSON.stringify(j));
+}
+
+startBoot();
+requestAnimationFrame(frame);
+loop();
+</script>
+</body>
+</html>
