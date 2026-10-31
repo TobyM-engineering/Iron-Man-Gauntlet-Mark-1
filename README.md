@@ -7,8 +7,8 @@
 </div>
 
 <p align="center">
-  <img src="media/palm-light.jpg" alt="The gauntlet palm up, the repulsor lit white" height="360">
-  <img src="media/plates-open-side.jpg" alt="The gauntlet from the side with its armour plates open" height="360">
+  <img src="media/palm-light.jpg" alt="The gauntlet palm up, the repulsor lit white" width="34%">
+  <img src="media/plates-open-side.jpg" alt="The gauntlet from the side with its armour plates open" width="61%">
 </p>
 
 <p align="center">
@@ -42,19 +42,19 @@ Every function is a hand gesture. No phone, computer or button needed.
 # 📸 Photos
 
 <p align="center">
-  <img src="media/plates-open-front.jpg" height="400">
-  <img src="media/plates-open-top.jpg" height="400">
+  <img src="media/plates-open-front.jpg" width="45%">
+  <img src="media/plates-open-top.jpg" width="45%">
 </p>
 <p align="center"><b>Plates open</b>, from the front and from above. The glow under the hand is the palm light.</p>
 
 <p align="center">
-  <img src="media/plates-closed.jpg" height="400">
-  <img src="media/plates-closed-top.jpg" height="400">
+  <img src="media/plates-closed.jpg" width="45%">
+  <img src="media/plates-closed-top.jpg" width="45%">
 </p>
 <p align="center"><b>Plates closed.</b> On the right, the round screen showing the arm in its exact pose, with the battery level.</p>
 
 <p align="center">
-  <img src="media/plates-closed-side.jpg" width="600">
+  <img src="media/plates-closed-side.jpg" width="75%">
 </p>
 
 ---
