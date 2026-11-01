@@ -63,7 +63,7 @@ Every function is a hand gesture. No phone, computer or button needed.
 
 I wanted to fly a drone with no controller at all. Not a glove that drives a transmitter, but a glove that *is* the transmitter: an ELRS radio module wired straight to the arm's ESP32 and bound to the drone.
 
-I built the hand-flying first on a bench glove and flew the drone with it. Mark 1 runs the same flight code with better sensors and the radio built in, and adds the armour, lights, lasers and screen.
+Then I built the rest of the suit's arm around it: armour plates that open on command, a palm light, two lasers, a LiDAR, a thermal camera and a round screen, all run by the same hand.
 
 ---
 
@@ -204,9 +204,9 @@ Built with `arduino-cli` and the ESP32 core 3.3.x. Libraries: Adafruit NeoPixel,
 
 # 📌 Repo Status
 
-✅ Mark 1 built and running: plates, lights, lasers, LiDAR, thermal camera and screen, all from gestures
+✅ Mark 1 built and running: the drone, plates, lights, lasers, LiDAR, thermal camera and screen, all from gestures
 
-✅ Drone flown by hand on the bench glove; Mark 1 runs the same flight code with the radio built in
+✅ The radio built into the arm: no transmitter, no phone, no computer
 
 ✅ 48 / 48 self-tests on hardware
 
