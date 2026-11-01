@@ -74,7 +74,13 @@ I built the hand-flying first on a bench glove and flew the drone with it. Mark 
   <img src="hardware/wiring-diagram.png" alt="The wiring diagram: every part of the arm from the elbow to the fingers, every wire in its real colour" width="900">
 </picture>
 
-Every part, pin and wire, in its real colour and gauge, from the elbow (left) to the fingertips (right): 70 parts, 166 wires, 37 of them through the wrist. I wrote a small app to draw it straight from the design files, so it can't drift from the real build. **[→ Parts, pin map and power](hardware/hardware.md)**
+Every part, pin and wire from the elbow (left) to the fingertips (right), each wire in its real colour: 70 parts, 166 wires, 37 of them through the wrist. I wrote an app that draws it straight from the design files, so it can't drift from the real build.
+
+<p align="center">
+  <a href="https://tobym-engineering.github.io/Iron-Man-Gauntlet-Mark-1/hardware/wiring-app.html"><img src="https://img.shields.io/badge/▶%20Open%20the%20wiring%20app-in%20your%20browser-c0392b?style=for-the-badge" alt="Open the wiring app"></a>
+</p>
+
+Click any part to see every pin and where each wire goes, or any wire for its gauge, length and current. *Trace to battery* follows a part's power all the way back. **[→ Parts, pin map and power](hardware/hardware.md)**
 
 ---
 
@@ -218,7 +224,7 @@ This is my Mark 1. More versions to come.
 │   ├── lib/            the arm-to-screen protocol, WiFi and updates
 │   ├── web/            the simulator and telemetry pages
 │   └── flash.sh        build and flash
-├── hardware/           parts, pin map, power and diagrams
+├── hardware/           parts, pin map, power, diagrams and the wiring app
 └── media/              photos and screen captures
 ```
 

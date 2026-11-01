@@ -2,6 +2,8 @@
 
 Everything here is also in [`firmware/Ironman/config.h`](../firmware/Ironman/config.h), which is the single source of truth: the firmware refuses to compile if a pin is booked twice, a strapping or flash pin is used, or two devices share an I²C address on one bus.
 
+Every wire, pin, resistor and capacitor is in the **[wiring app](https://tobym-engineering.github.io/Iron-Man-Gauntlet-Mark-1/hardware/wiring-app.html)** (`wiring-app.html` in this folder: open it in a browser, it works offline too).
+
 ## Parts
 
 | Part | Job | Notes |
