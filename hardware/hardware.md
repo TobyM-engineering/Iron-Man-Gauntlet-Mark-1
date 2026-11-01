@@ -56,18 +56,19 @@ All junctions are wires twisted, soldered and heat-shrunk — no perfboard, no s
 
 Never used: GPIO 12 (a strapping pin — high at boot stops it starting), 0 / 2 / 15 (straps), 6–11 (flash), 1 / 3 (console). All analog inputs are on ADC1, because ADC2 stops working while WiFi is on.
 
-## PCA9685 channels (as designed)
+## PCA9685 channels
 
-| Channel | Output |
-|---|---|
-| 0, 1 | Plate 1, plate 2 |
-| 2, 3 | Plate 3, servos A and B |
-| 4, 5 | Hand plate, servos A and B |
-| 6 | Green laser MOSFET gate |
-| 7 | Red laser TTL input |
-| 9, 10, 11 | High-power LED groups: palm 20 mm, palm square, fingertips |
+| Channel on the board | Output | Firmware channel |
+|---|---|---|
+| 0, 1 | Hand plate, servos A (left) and B (right) | 4, 5 |
+| 4 | Its header's 5 V and ground feed the palm ring | 12 |
+| 5 | Red laser TTL input | 7 |
+| 7 | Green laser MOSFET gate | 6 |
+| 9, 10, 11 | High-power LED groups: palm 20 mm, palm square, fingertips | 9, 10, 11 |
+| 12, 13 | Plate 2, plate 1 | 1, 0 |
+| 14, 15 | Plate 3, servos A (front) and B (back) | 2, 3 |
 
-Channels can be remapped on a built arm without recompiling (`/pcamap?set=6:13` on the arm's setup page, kept in flash).
+The firmware addresses each output by its own channel number (`PCA_CH_*` in config.h) and a channel map saved on the arm routes it to the header it's plugged into. The map is set without recompiling (`/pcamap` on the arm's setup page, kept in flash). On a fresh board, set it before anything moves.
 
 ## Power
 
