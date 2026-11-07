@@ -1,0 +1,31 @@
+#!/bin/sh
+# Refuses a push if any commit in it adds or changes the full arm model, or if the pushed tree holds it anywhere -
+# also for a commit made with --no-verify. Active once per clone: git config core.hooksPath .githooks
+. "$(git rev-parse --show-toplevel)/.githooks/private-model-check.sh"
+
+zero=0000000000000000000000000000000000000000
+bad=""
+while read -r lref lsha rref rsha; do
+  [ "$lsha" = "$zero" ] && continue          # deleting a branch
+  if [ "$rsha" = "$zero" ] || ! git cat-file -e "$rsha^{commit}" 2>/dev/null; then
+    range="$lsha --not --remotes"
+  else
+    range="$rsha..$lsha"
+  fi
+  # every commit being pushed: each file it adds, changes or renames to
+  out=$(git rev-list $range | while read -r c; do
+    git diff-tree -r -m --root --no-commit-id --name-only --diff-filter=ACMR -z "$c" | tr '\0' '\n' | while IFS= read -r p; do
+      [ -n "$p" ] && check_blob "$p" "$c:$p"
+    done
+  done)
+  # and the whole tree being pushed
+  out2=$(git ls-tree -r --name-only -z "$lsha" | tr '\0' '\n' | while IFS= read -r p; do
+    [ -n "$p" ] && check_blob "$p" "$lsha:$p"
+  done)
+  bad="$bad
+$out
+$out2"
+done
+bad=$(printf '%s\n' "$bad" | grep -v '^$' | sort -u)
+[ -z "$bad" ] || refuse "$bad"
+exit 0

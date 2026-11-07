@@ -1,0 +1,10 @@
+#!/bin/sh
+# Refuses a commit that adds or changes the full arm model (private-model-check.sh says what counts).
+# Active once per clone: git config core.hooksPath .githooks
+. "$(git rev-parse --show-toplevel)/.githooks/private-model-check.sh"
+
+bad=$(git diff --cached --name-only --diff-filter=ACMR -z | tr '\0' '\n' | while IFS= read -r p; do
+  [ -n "$p" ] && check_blob "$p" ":$p"
+done)
+[ -z "$bad" ] || refuse "$bad"
+exit 0

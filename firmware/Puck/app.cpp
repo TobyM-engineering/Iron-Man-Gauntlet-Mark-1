@@ -519,6 +519,9 @@ void app_setup() {
   touch_irq_start();   // after the triangle buffer: its task's stack must not split the one big free block
   { app::FrameSetup f = app::core_begin_frame(core); app::draw_scene(frame, f.cam, core.world, f.lod, f.shut); app::draw_scene(frame, f.cam, core.world, 1, f.shut); }   // the lighting tables and visibility unions, built once here
 
+#ifdef MODEL_IS_STANDIN
+  Serial.println("model: the STAND-IN of simple blocks (model_standin.h) - put model_data.h in the sketch folder for the full arm");
+#endif
   Serial.printf("model: %d parts, %d triangles, %d vertices, triangle buffer %d shared by the two cores (%u bytes) | free heap %u, largest block %u\n", model::NPART,
                 model::NTRI, model::NVERT, triTotal, (unsigned)(triTotal * sizeof(rnd::Tri)), (unsigned)ESP.getFreeHeap(),
                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));

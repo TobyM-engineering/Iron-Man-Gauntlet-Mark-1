@@ -2,6 +2,11 @@
 firmware/lib/GauntletBenchIO/src/secrets.h
 firmware/PuckUpdater/secrets.h
 
+# the full arm model of the round screen: on this PC only, never in this repository. Without it the firmware
+# builds with firmware/Puck/model_standin.h (simple blocks); .githooks also refuses it in a commit or a push.
+model_data*.h
+arm_lod*.h
+
 # build output
 build/
 *.bin

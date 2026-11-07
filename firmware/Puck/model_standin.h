@@ -1,9 +1,11 @@
 // A STAND-IN for the puck's arm model: one plain box per part (each part's size and place only), so the firmware
 // builds and runs and the plates, fingers and wrist still move. The armour model shown in the photos is not
-// published. The joints, plate linkages and frames below are the rig's own numbers. To draw your own armour,
-// fill the same arrays (kParts, kPartSphere, kVerts, kNormals, kTris, kPartEdges, kEdges, kVisDirs) from your
-// own meshes. The puck only DRAWS these angles; it never drives a servo.
+// published. The joints, plate linkages and frames below are the rig's own numbers. kin.h uses model_data.h
+// instead whenever that file is in this folder (it never goes into the repository: .gitignore and .githooks).
+// To draw your own armour, fill the same arrays (kParts, kPartSphere, kVerts, kNormals, kTris, kPartEdges, kEdges,
+// kVisDirs) from your own meshes in a model_data.h. The puck only DRAWS these angles; it never drives a servo.
 #pragma once
+#define MODEL_IS_STANDIN 1   // app.cpp says so at boot
 #include <stdint.h>
 
 namespace model {

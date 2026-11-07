@@ -8,7 +8,15 @@
 #pragma once
 #include <math.h>
 #include <string.h>
+// The arm model: model_data.h (the full model, kept out of the repository - .gitignore, .githooks) when it is in
+// this folder, else model_standin.h (simple blocks), so the code builds either way. The compile log says which.
+#if __has_include("model_data.h")
 #include "model_data.h"
+#pragma message("Puck: the full arm model (model_data.h)")
+#else
+#include "model_standin.h"
+#pragma message("Puck: the STAND-IN arm model (model_standin.h) - no model_data.h in this folder")
+#endif
 
 namespace kin {
 
