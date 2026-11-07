@@ -141,6 +141,8 @@ A three-position switch sets what's allowed: **SAFE** (nothing acts), **SHOW** (
 
 An ESP32-S3 round touch display draws the gauntlet in 3D from the real CAD model, about 6,000 triangles at 16 frames a second, moving with the real arm. Swipe sideways for a control panel with a button for every action, a thermal camera page, and a six-step calibration.
 
+The armour's 3D model is not in this repository: `firmware/Puck/model_data.h` is a stand-in made of simple blocks, so the screen's code still builds and runs.
+
 ## Safety
 
 - Nothing moves at power-up, and the arm starts in SAFE
